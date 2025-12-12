@@ -3,117 +3,133 @@ import binascii
 import time
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
-
 import requests
-
+import math
 
 class IoLinkMaster:
-    
+
     """
     IO-Link master helper for the methanol/N2 test setup.
-
-    Devices:
-    - SD8500 (flow, pressure, temp)
-    - SD6500 #1 and #2 (flow, pressure, temp)
-    - SenxTx analogue (current via IO-Link analogue module, e.g. DP2200)
-    - Dewpoint Michell analogue (current via IO-Link analogue module)
-    - 2x Dewpoint Banner via Modbus–IO–Link converter
-    - 4x PT100 via AL2284 4-channel temperature module
     """
 
-    def __init__(self, host: str, auth_b64: Optional[str] = None) -> None:
+    def __init__(self, host: str) -> None:
         self.host = host
-        self.auth_b64 = auth_b64.rstrip() if auth_b64 else None
 
     # ------------------------------
     # Low-level IO-Link / HTTP
     # ------------------------------
-
+    
+    # get JSON data from ethernet
     def _request_json(self, path: str, timeout: float = 1.0) -> Dict[str, Any]:
 
         """
         Simple GET-based access to the IoT core.
-
-        If your master needs POST with a JSON body, you can adapt this to match
-        the working version you already have.
         """
 
-        url = f"http://{self.host}{path}"
-        headers = {}
-        if self.auth_b64:
-            headers["Authorization"] = self.auth_b64
+        url = f"http://{self.host}{path}" # host : IP adress, path : defined with port 
 
-        resp = requests.get(url, headers=headers, timeout=timeout)
+        resp = requests.get(url, timeout=timeout) # 
         resp.raise_for_status()
-        return resp.json()
+        return resp.json() # decode json to python object
 
+    # json string to hex
     def get_pdin_hex(self, port: int, timeout: float = 1.0) -> Optional[str]:
+
         """
         Read PDin hex value from one port.
 
         Returns hex string without '0x' or None if no data.
         """
-        # Path may differ per master – adjust when you connect.
+
+        # get the data of the port
         data = self._request_json(
             f"/iolinkmaster/port[{port}]/iolinkdevice/pdin/getdata",
             timeout=timeout,
         )
-        # Common pattern: {"data": "0xAABBCCDD"}
-        hex_value = data.get("data") or data.get("value")
+
+        print("data:", data)
+
+        hex_value = data["data"]["value"]
+
+        print("hex_value", hex_value)
+
         if not hex_value:
             return None
-
+        
         return hex_value.replace("0x", "").replace("0X", "").strip()
 
+    # heximal to bites
     @staticmethod
     def _hex_to_bytes(hex_value: str) -> bytes:
         return binascii.unhexlify(hex_value)
-
+  
     # ------------------------------
-    # Common helpers for SD6500/8500
+    # Component and Module functions
     # ------------------------------
 
-    def _decode_sd_common(self, hex_value: str) -> Dict[str, float]:
+    # Sensor: decode sd6500
+    def decode_sd6500_pdin(hex_value: str) -> Dict[str, float]:
+        
         """
-        Common decoding for SD6500 / SD8500, 128-bit PD.
+        Decode SD6500 PDin.
 
-        Bytes 0..3  : totaliser_raw (Float32 BE) -> [m³]
-        Bytes 4..5  : flow_raw      (Int16  BE)  -> [m³/h] * 0.01
-        Bytes 8..9  : temp_raw16    (Int16  BE)  -> [°C]   * 0.01
-        Bytes 12..13: pres_raw16    (Int16  BE)  -> [bar]  * 0.01
+        Byte layout (128-bit PD):
+            Bytes 0..3   : totaliser_raw (Float32 BE) -> [m³]
+            Bytes 4..5   : flow_raw      (Int16  BE)  -> [m³/h] * 0.01
+            Bytes 8..9   : temp_raw16    (Int16  BE)  -> [°C]   * 0.01
+            Bytes 12..13 : pres_raw16    (Int16  BE)  -> [bar]  * 0.01
         """
-        b = self._hex_to_bytes(hex_value)
+
+        b = bytes.fromhex(hex_value)
 
         if len(b) < 14:
-            raise ValueError(f"PDin too short for SD device: {len(b)} bytes (expected >= 14)")
+            raise ValueError(f"PDin too short for SD6500: {len(b)} bytes (expected >= 14)")
 
         totaliser_raw = struct.unpack(">f", b[0:4])[0]
-        flow_raw = struct.unpack(">h", b[4:6])[0]
-        temp_raw16 = struct.unpack(">h", b[8:10])[0]
-        pres_raw16 = struct.unpack(">h", b[12:14])[0]
+        flow_raw      = struct.unpack(">h", b[4:6])[0]
+        temp_raw16    = struct.unpack(">h", b[8:10])[0]
+        pres_raw16    = struct.unpack(">h", b[12:14])[0]
 
         return {
-            "totaliser_m3": float(totaliser_raw),
-            "flow_m3_h": float(flow_raw) * 0.01,
-            "temperature_c": float(temp_raw16) * 0.01,
-            "pressure_bar": float(pres_raw16) * 0.01,
+            "totaliser_m3":   float(totaliser_raw),
+            "flow_m3_h":      float(flow_raw) * 0.01,
+            "temperature_c":  float(temp_raw16) * 0.01,
+            "pressure_bar":   float(pres_raw16) * 0.01,
         }
 
-    def decode_sd6500_pdin(self, hex_value: str, prefix: str) -> Dict[str, float]:
-        """Decode SD6500 PDin with a name prefix (e.g. 'sd6500_1')."""
-        base = self._decode_sd_common(hex_value)
-        return {f"{prefix}_{k}": v for k, v in base.items()}
+    # Sensor: decode sd8500
+    def decode_sd8500_pdin(hex_value: str) -> Dict[str, float]:
 
-    def decode_sd8500_pdin(self, hex_value: str, prefix: str = "sd8500") -> Dict[str, float]:
-        """Decode SD8500 PDin with a name prefix (default 'sd8500')."""
-        base = self._decode_sd_common(hex_value)
-        return {f"{prefix}_{k}": v for k, v in base.items()}
+        """
+        Decode SD8500 PDin.
 
-    # ------------------------------
-    # AL2284 PT100 module
-    # ------------------------------
+        Byte layout (128-bit PD):
+            Bytes 0..3   : totaliser_raw (Float32 BE) -> [m³]
+            Bytes 4..5   : flow_raw      (Int16  BE)  -> [m³/h] * 0.01
+            Bytes 8..9   : temp_raw16    (Int16  BE)  -> [°C]   * 0.01
+            Bytes 12..13 : pres_raw16    (Int16  BE)  -> [bar]  * 0.01
+        """
 
+        b = bytes.fromhex(hex_value)
+
+        if len(b) < 14:
+            raise ValueError(f"PDin too short for SD8500: {len(b)} bytes (expected >= 14)")
+
+        totaliser_raw = struct.unpack(">f", b[0:4])[0]
+        flow_raw      = struct.unpack(">h", b[4:6])[0]
+        temp_raw16    = struct.unpack(">h", b[8:10])[0]
+        pres_raw16    = struct.unpack(">h", b[12:14])[0]
+
+        return {
+            "totaliser_m3":   float(totaliser_raw),
+            "flow_m3_h":      float(flow_raw) * 0.01,
+            "temperature_c":  float(temp_raw16) * 0.01,
+            "pressure_bar":   float(pres_raw16) * 0.01,
+        }
+
+    # module: 4 temperature sensors 
     def decode_al2284_pdin(self, hex_value: str) -> Dict[str, float]:
+
         """
         Decode AL2284 process data (4-channel float, big-endian).
 
@@ -122,6 +138,7 @@ class IoLinkMaster:
         Bytes 8..11  : T3 [°C]
         Bytes 12..15 : T4 [°C]
         """
+
         b = self._hex_to_bytes(hex_value)
 
         if len(b) < 16:
@@ -132,60 +149,120 @@ class IoLinkMaster:
         t3 = struct.unpack(">f", b[8:12])[0]
         t4 = struct.unpack(">f", b[12:16])[0]
 
+        print("temp t1:", t1)
+
         return {
             "pt100_1_degC": float(t1),
-            "pt100_2_degC": float(t2),
-            "pt100_3_degC": float(t3),
-            "pt100_4_degC": float(t4),
+           # "pt100_2_degC": float(t2),
+           # "pt100_3_degC": float(t3),
+           # "pt100_4_degC": float(t4),
+        }
+ 
+    # Sensor: Senz-Tx oxygen sensor
+    def decode_senxtx_oxygen(self, hex_value: str) -> Dict[str, float]:
+       
+        """
+        Decode SenzTx oxygen signal via DP2200 + IO-Link master.
+
+        DP2200 process data (BigEndian):
+            - 4 bytes total (RecordT 32 bit)
+            - Bytes 0..1: Current, IntegerT (16 bit), scaled:
+                current_mA = current_raw * 0.001
+            Special values:
+                32764  (0x7FFC) : NoData
+                -32760 (0x8008) : Underload (UL)
+                32760  (0x7FF8) : Overload (OL)
+            - Remaining bits contain OUT1 status (ignored here).
+
+        SenzTx mapping:
+            4–20 mA  ->  0–25 % O₂  (linear)
+        """
+        b = bytes.fromhex(hex_value)
+        if len(b) < 2:
+            raise ValueError(f"Expected at least 2 bytes, got {len(b)} from {hex_value!r}")
+
+        # 16-bit signed integer, big-endian
+        current_raw = struct.unpack(">h", b[0:2])[0]
+
+        # Handle DP2200 special codes → treat as NaN
+        if current_raw in (32764, -32760, 32760):
+            current_mA = float("nan")
+        else:
+            current_mA = current_raw * 0.001  # raw → mA
+
+        # 4–20 mA → 0–96 % O₂
+        if math.isnan(current_mA):
+            oxygen_percent = float("nan")
+        else:
+            oxygen_percent = (current_mA - 4.0) / 16.0 * 25.0  # (20 - 4) = 16 mA span
+            # Clamp to [0, 96]
+            if oxygen_percent < 0.0:
+                oxygen_percent = 0.0
+            elif oxygen_percent > 25.0:
+                oxygen_percent = 25.0
+
+        return {
+            "senxtx_o2_current_mA": float(current_mA),
+            "senxtx_o2_oxygen_percent": float(oxygen_percent),
+        }
+
+    # Banner dewpoint via Modbus–IO–Link (S15C)
+    def decode_banner_dewpoint_pdin(self, hex_value: str) -> Dict[str, float]:
+
+        """
+        Decode Banner dewpoint sensor values coming via a Modbus–IO–Link converter (Banner S15C).
+
+        S24 Modbus holding register layout:
+            40001 : Humidity      (%RH)  -> raw / 100   (UInt16)
+            40002 : Temperature   (°C)   -> raw / 20    (Int16)
+            40004 : Dew Point     (°C)   -> raw / 100   (Int16)
+
+        Real S15C PDin (as returned by IFM) is a fixed-length byte array padded with zeros.
+        The three register values show up at the END of PDin, followed by a status word:
+            ... [dewpoint_raw_u16, temp_raw_u16, humidity_raw_u16, status_u16]
+        Example tail: 0401 01EE 0FB2 0710
+        """
+
+        b = self._hex_to_bytes(hex_value)
+
+        print("b", b)
+
+        if len(b) < 8 or (len(b) % 2) != 0:
+            raise ValueError(
+                f"PDin invalid length: {len(b)} bytes (expected >= 8 and even)"
+            )
+
+        # Interpret the whole PDin as big-endian 16-bit words
+        words = struct.unpack(f">{len(b)//2}H", b)
+
+        # Use the last 4 words: [dewpoint, temperature, humidity, status]
+        dew_u16, temp_u16, hum_u16, status_u16 = words[-4], words[-3], words[-2], words[-1]
+
+        # Convert unsigned 16-bit to signed 16-bit for temp/dewpoint (two's complement)
+        def u16_to_s16(u: int) -> int:
+            return u - 0x10000 if (u & 0x8000) else u
+
+        dew_raw = u16_to_s16(dew_u16)     # Int16
+        temp_raw = u16_to_s16(temp_u16)   # Int16
+        hum_raw = hum_u16                # UInt16
+
+        humidity_rh = hum_raw / 100.0
+        temperature_c = temp_raw / 20.0
+        dewpoint_c = dew_raw / 100.0
+
+        print("PDin tail words:", [f"0x{w:04X}" for w in (dew_u16, temp_u16, hum_u16, status_u16)])
+        print("humidity:", humidity_rh)
+        print("temperature:", temperature_c)
+        print("dewpoint:", dewpoint_c)
+
+        return {
+            "dewpoint_banner_1_Humidity": float(humidity_rh),
+            "dewpoint_banner_1_degreeC": float(temperature_c),
+            "dewpoint_banner_1_dewpoint": float(dewpoint_c),
         }
 
     # ------------------------------
-    # Analogue IO-Link (DP2200-like)
-    # ------------------------------
-
-    def decode_analog_current_pdin(self, hex_value: str, prefix: str) -> Dict[str, float]:
-        """
-        Decode 16-bit current (4-20 mA style) from an analogue IO-Link module.
-
-        According to DP2200 IODD:
-        - Process data input: 16-bit signed integer, big-endian
-        - Range: [mA] (3600 .. 21000) * 0.001
-        - 32764 = NoData, -32760 = UL, 32760 = OL
-        """
-        b = self._hex_to_bytes(hex_value)
-        if len(b) < 2:
-            raise ValueError(f"PDin too short for analogue current: {len(b)} bytes (expected >= 2)")
-
-        raw = struct.unpack(">h", b[0:2])[0]
-        if raw in (32764, -32760, 32760):
-            current_mA = float("nan")  # or None if you prefer
-        else:
-            current_mA = float(raw) * 0.001
-
-        return {f"{prefix}_current_mA": current_mA}
-
-    # ------------------------------
-    # Banner dewpoint via Modbus–IO–Link
-    # ------------------------------
-
-    def decode_banner_dewpoint_pdin(self, hex_value: str, prefix: str) -> Dict[str, float]:
-        """
-        Decode dewpoint from a Modbus–IO–Link converter.
-
-        This is a placeholder: adjust scaling once you have the IODD.
-        For now, treat the first 16 bits as a signed integer and scale by 0.1.
-        """
-        b = self._hex_to_bytes(hex_value)
-        if len(b) < 2:
-            raise ValueError(f"PDin too short for Banner dewpoint: {len(b)} bytes (expected >= 2)")
-
-        raw = struct.unpack(">h", b[0:2])[0]
-        dewpoint_degC = float(raw) * 0.1  # TODO: verify scaling
-
-        return {f"{prefix}_degC": dewpoint_degC}
-
-    # ------------------------------
-    # High-level sampling
+    # Sampling
     # ------------------------------
 
     def sample_all_sensors(
@@ -201,6 +278,7 @@ class IoLinkMaster:
         pt100_module_port: Optional[int] = None,
         timeout: float = 1.0,
     ) -> Dict[str, Any]:
+        
         """
         Take a snapshot of all configured sensors and return a single row dict.
 
@@ -210,6 +288,7 @@ class IoLinkMaster:
 
         Plus keys for each successfully decoded sensor.
         """
+
         row: Dict[str, Any] = {
             "timestamp_utc": datetime.now(timezone.utc).isoformat(),
             "timestamp_unix_s": time.time(),
@@ -244,10 +323,12 @@ class IoLinkMaster:
 
         # SenxTx analogue ---------------------------------------
         if senxtx_port is not None:
+
             try:
                 hx = self.get_pdin_hex(senxtx_port, timeout=timeout)
+                print("hx:",hx)
                 if hx:
-                    row.update(self.decode_analog_current_pdin(hx, prefix="senxtx_o2"))
+                    row.update(self.decode_senxtx_oxygen(hx))
             except Exception as exc:
                 print(f"[IoLinkMaster] SenxTx error: {exc}")
 
@@ -264,8 +345,10 @@ class IoLinkMaster:
         if banner_dp1_port is not None:
             try:
                 hx = self.get_pdin_hex(banner_dp1_port, timeout=timeout)
+                print("hx from port:", hx)
                 if hx:
-                    row.update(self.decode_banner_dewpoint_pdin(hx, prefix="dewpoint_banner_1"))
+                    row.update(self.decode_banner_dewpoint_pdin(hx))
+                    print("row after writing:", row)
             except Exception as exc:
                 print(f"[IoLinkMaster] Banner dewpoint #1 error: {exc}")
 
@@ -287,4 +370,5 @@ class IoLinkMaster:
             except Exception as exc:
                 print(f"[IoLinkMaster] PT100 module error: {exc}")
 
+        print("row:", row)
         return row

@@ -22,12 +22,14 @@ class AcquisitionManager:
     def __init__(
         self,
         *,
-        io_master: IoLinkMaster,
-        sample_period_s: float,
-        history_seconds: float,
-        sample_kwargs: Optional[Dict[str, Any]] = None,
-        experiment_logger: "Optional[ExperimentLogger]" = None,
+        io_master: IoLinkMaster,    # connect to IO-link data 
+        sample_period_s: float,     # the sampling period of the IO link
+        history_seconds: float,     # how long do we want to keep a history
+        sample_kwargs: Optional[Dict[str, Any]] = None, # list of the sensors involved
+        experiment_logger: "Optional[ExperimentLogger]" = None, # if we want to log experiments 
     ) -> None:
+        
+        # write parameters to instance
         self.io_master = io_master
         self.sample_period_s = sample_period_s
         self.history_seconds = history_seconds
@@ -60,6 +62,7 @@ class AcquisitionManager:
         with self._lock:
             if max_age_s is None:
                 max_age_s = self.history_seconds
+                
             now = time.time()
             return [
                 dict(row)

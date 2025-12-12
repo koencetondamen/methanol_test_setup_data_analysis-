@@ -65,6 +65,38 @@ def create_app(
                 style={"border": "1px solid #ccc", "padding": "1rem", "marginBottom": "1rem"},
             ),
 
+            # Manual actions / events -----------------------------------------
+            html.Div(
+                [
+                    html.H3("Actions / event log"),
+                    html.Div(
+                        [
+                            dcc.Input(
+                                id="action-text",
+                                type="text",
+                                placeholder="e.g., start pump / close valve 5",
+                                style={"width": "420px", "marginRight": "0.5rem"},
+                            ),
+                            html.Button("Perform action", id="btn-action", n_clicks=0),
+                        ],
+                        style={"marginBottom": "0.5rem"},
+                    ),
+                    html.Div(id="action-status", style={"marginBottom": "0.5rem", "color": "#555"}),
+                    html.Div(
+                        id="event-log",
+                        style={
+                            "border": "1px solid #ddd",
+                            "borderRadius": "8px",
+                            "padding": "0.5rem",
+                            "maxHeight": "220px",
+                            "overflowY": "auto",
+                            "backgroundColor": "#fafafa",
+                        },
+                    ),
+                ],
+                style={"border": "1px solid #ccc", "padding": "1rem", "marginBottom": "1rem"},
+            ),
+
             # Live 11 sensors as cards -----------------------------------------
             html.Div(
                 [
@@ -81,21 +113,8 @@ def create_app(
             # Time-series plot --------------------------------------------------
             html.Div(
                 [
-                    html.H3("History plot"),
-                    html.Div(
-                        [
-                            html.Label("Select signal:"),
-                            dcc.Dropdown(
-                                id="history-field",
-                                options=sensor_options,
-                                value=config.SENSOR_FIELDS[0]["field"],
-                                clearable=False,
-                                style={"width": "350px"},
-                            ),
-                        ],
-                        style={"marginBottom": "0.5rem"},
-                    ),
-                    dcc.Graph(id="history-graph"),
+                    html.H3("History plots"),
+                    html.Div(id="history-graphs"),
                 ]
             ),
 
@@ -150,47 +169,114 @@ def create_app(
             )
 
         return cards
+    
+    @app.callback(
+        [Output("action-status", "children"), Output("action-text", "value")],
+        Input("btn-action", "n_clicks"),
+        State("action-text", "value"),
+        prevent_initial_call=True,
+    )
+    def handle_action_button(n_clicks: int, action_text: Optional[str]):
+        action = (action_text or "").strip()
+        if not action:
+            return "Type an action first.", action_text
+
+        if not experiment_logger.active:
+            return "No active experiment — start an experiment before logging actions.", action_text
+
+        experiment_logger.log_event(action)
+        return f"Logged action: {action}", ""
+
 
     @app.callback(
-        Output("history-graph", "figure"),
-        [Input("update-interval", "n_intervals"), Input("history-field", "value")],
+        Output("event-log", "children"),
+        Input("update-interval", "n_intervals"),
     )
-    def update_history_graph(_n: int, field: str):
+    def update_event_log(_n: int):
+        events = experiment_logger.get_recent_events(limit=50)
+
+        if not events:
+            return html.Div("No events yet.")
+
+        # newest first
+        rows = []
+        for e in reversed(events):
+            ts = e.get("timestamp_ams", "")
+            hhmmss = ts[11:19] if len(ts) >= 19 else ts   # "YYYY-MM-DDTHH:MM:SS" -> "HH:MM:SS"
+
+            rows.append(
+                html.Tr(
+                    [
+                        html.Td(hhmmss, style={"whiteSpace": "nowrap", "paddingRight": "0.75rem"}),
+                        html.Td(e.get("event", "")),
+                    ]
+                )
+            )
+
+        return html.Table(
+            [
+                html.Thead(html.Tr([html.Th("Time (UTC)"), html.Th("Action")])),
+                html.Tbody(rows),
+            ],
+            style={"width": "100%", "fontSize": "0.95rem"},
+        )
+
+
+    @app.callback(
+        Output("history-graphs", "children"),
+        Input("update-interval", "n_intervals"),
+    )
+    def update_history_graphs(_n: int):
         history = acquisition.get_history()
         if not history:
-            return go.Figure(
-                data=[],
-                layout=go.Layout(
-                    title="No data yet",
-                    xaxis={"title": "Time"},
-                    yaxis={"title": field},
-                ),
-            )
+            return [html.Div("No data yet...")]
 
         df = pd.DataFrame(history)
-        if field not in df.columns:
-            return go.Figure(
-                data=[],
+
+        # pick a timestamp column that exists
+        time_col = "timestamp_ams" if "timestamp_ams" in df.columns else "timestamp_utc"
+        if time_col not in df.columns:
+            return [html.Div("No timestamp column in history yet.")]
+
+        x = pd.to_datetime(df[time_col], errors="coerce")
+
+        graphs = []
+        for spec in config.SENSOR_FIELDS:
+            field = spec["field"]
+            label = spec["label"]
+            unit = spec.get("unit", "")
+
+            if field not in df.columns:
+                continue
+
+            y = df[field]
+
+            # Only show plots for sensors that actually have values
+            if y.dropna().empty:
+                continue
+
+            fig = go.Figure(
+                data=[go.Scatter(x=x, y=y, mode="lines", name=label)],
                 layout=go.Layout(
-                    title=f"Field '{field}' not available yet",
+                    title=f"{label}{f' ({unit})' if unit else ''}",
                     xaxis={"title": "Time"},
-                    yaxis={"title": field},
+                    yaxis={"title": unit or field},
+                    margin={"l": 40, "r": 20, "t": 40, "b": 40},
+                    height=280,
                 ),
             )
 
-        x = pd.to_datetime(df["timestamp_utc"])
-        y = df[field]
+            graphs.append(
+                html.Div(
+                    dcc.Graph(
+                        figure=fig,
+                        id={"type": "history-graph", "field": field},  # optional but nice
+                    ),
+                    style={"marginBottom": "0.75rem"},
+                )
+            )
 
-        fig = go.Figure(
-            data=[go.Scatter(x=x, y=y, mode="lines+markers", name=field)],
-            layout=go.Layout(
-                title=field,
-                xaxis={"title": "Time"},
-                yaxis={"title": field},
-                margin={"l": 40, "r": 20, "t": 40, "b": 40},
-            ),
-        )
-        return fig
+        return graphs or [html.Div("No sensor values yet...")]
 
     @app.callback(
         Output("exp-status", "children"),

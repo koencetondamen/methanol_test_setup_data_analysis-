@@ -30,7 +30,7 @@ class SimulatedIoLinkMaster:
     - pt100_1_degC .. pt100_4_degC
     """
 
-    def __init__(self, host: str, auth_b64: Optional[str] = None) -> None:
+    def __init__(self, host: str) -> None:
         # Keep signature compatible, but ignore host/auth.
         self._t0 = time.time()
         self._rng = random.Random(42)
