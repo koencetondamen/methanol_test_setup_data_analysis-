@@ -14,11 +14,11 @@ This repository contains the full data pipeline for the **methanol / N₂ test s
 For a visual overview, see:
 
 - **Hardware & wiring**  
-  `Documents//System Architecture REV00.pdf`  
+  [System Architecture REV00 (PDF)](Documents/System%20Architecture%20REV00.pdf)
   (Sensor connections to IO board / IO-Link master)
 
 - **Software & data flow**  
-  `Documents//architecture.drawio.pdf`  
+  [Architecture Diagram (PDF)](Documents/architecture.drawio.pdf) 
   (IO-Link master → Python → Acquisition → Dashboard & Logging)
 
 These diagrams are the canonical references for wiring and software architecture.
