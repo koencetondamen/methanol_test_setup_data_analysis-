@@ -140,8 +140,13 @@ class SimulatedIoLinkMaster:
         # Dewpoint Banner #1 and #2 via Modbus–IO–Link
         # ----------------------------
         if banner_dp1_port is not None:
-            dew1 = wave(base=-5.0, amp=3.0, period_s=500.0, noise=0.2)
-            row["dewpoint_banner_1_degC"] = dew1
+            humidity = wave(base=60.0, amp=15.0, period_s=700.0, noise=1.0)
+            temperature = wave(base=20.0, amp=5.0, period_s=500.0, noise=0.2)
+            dewpoint = wave(base=10.0, amp=3.0, period_s=500.0, noise=0.2)
+
+            row["dewpoint_banner_1_Humidity"] = humidity
+            row["dewpoint_banner_1_degreeC"] = temperature
+            row["dewpoint_banner_1_dewpoint"] = dewpoint
 
         if banner_dp2_port is not None:
             dew2 = wave(base=-3.0, amp=2.5, period_s=450.0, noise=0.2)

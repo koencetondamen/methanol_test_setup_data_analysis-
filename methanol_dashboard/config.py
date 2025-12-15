@@ -5,7 +5,7 @@ from pathlib import Path
 # --------------------------
 
 # Set this to True while the IO-Link master is not connected.
-USE_SIMULATION = False
+USE_SIMULATION = True
 
 # IP address of the IO-Link master (AL1322)
 IOT_HOST = "192.168.1.250"  # change when needed

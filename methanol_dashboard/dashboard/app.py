@@ -9,7 +9,6 @@ from ..acquisition import AcquisitionManager
 from ..experiment_log import ExperimentLogger
 from .. import config
 
-
 def create_app(
     acquisition: AcquisitionManager,
     experiment_logger: ExperimentLogger,
@@ -100,7 +99,7 @@ def create_app(
             # Live 11 sensors as cards -----------------------------------------
             html.Div(
                 [
-                    html.H3("Live sensor values (11 sensors)"),
+                    html.H3("Live sensor values"),
                     html.Div(id="live-cards", style={
                         "display": "grid",
                         "gridTemplateColumns": "repeat(auto-fit, minmax(220px, 1fr))",
