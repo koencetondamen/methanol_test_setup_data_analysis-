@@ -46,3 +46,15 @@ AUTH_B64 = None             # e.g. "Basic abcdef..." if auth is enabled
 5. run code with `python -m methanol_dashboard.run`
 6. open `http://localhost:8050/` in browser.
 
+## 4. Current port layout
+
+```python
+PORT_SD8500             = 1              # Testo SD8500
+PORT_SD6500_1           = None           # Testo SD6500 #1
+PORT_SD6500_2           = None           # Testo SD6500 #2
+PORT_SENXTX_ANALOG      = None           # SenxTx via analogue IO-Link (DP2200 or similar)
+PORT_MICHELL_ANALOG     = 5              # Dewpoint Michell via analogue IO-Link
+PORT_BANNER_DEWPOINT_1  = None           # Dewpoint Banner #1 via Modbus–IO–Link converter
+PORT_BANNER_DEWPOINT_2  = None           # Dewpoint Banner #2 via Modbus–IO–Link converter
+PORT_PT100_MODULE       = 8              # 4-channel PT100 IO-Link module (AL2284)
+```
