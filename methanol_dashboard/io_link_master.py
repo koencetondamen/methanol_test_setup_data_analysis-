@@ -47,11 +47,7 @@ class IoLinkMaster:
             timeout=timeout,
         )
 
-        print("data:", data)
-
         hex_value = data["data"]["value"]
-
-        print("hex_value", hex_value)
 
         if not hex_value:
             return None
@@ -68,7 +64,7 @@ class IoLinkMaster:
     # ------------------------------
 
     # Sensor: decode sd6500
-    def decode_sd6500_pdin(hex_value: str) -> Dict[str, float]:
+    def decode_sd6500_pdin(self, hex_value: str) -> Dict[str, float]:
         
         """
         Decode SD6500 PDin.
@@ -98,8 +94,7 @@ class IoLinkMaster:
         }
 
     # Sensor: decode sd8500
-    def decode_sd8500_pdin(hex_value: str) -> Dict[str, float]:
-
+    def decode_sd8500_pdin(self, hex_value: str) -> Dict[str, float]:
         """
         Decode SD8500 PDin.
 
@@ -108,23 +103,43 @@ class IoLinkMaster:
             Bytes 4..5   : flow_raw      (Int16  BE)  -> [m³/h] * 0.01
             Bytes 8..9   : temp_raw16    (Int16  BE)  -> [°C]   * 0.01
             Bytes 12..13 : pres_raw16    (Int16  BE)  -> [bar]  * 0.01
+            Byte  15     : UIntegerT     (4 Bit)      -> 
+                        0 - Ok, 
+                        1 - Maintenance, 
+                        2 - Out of spec, 
+                        3 - Functional Check, 
+                        4 - Failure
         """
 
         b = bytes.fromhex(hex_value)
 
-        if len(b) < 14:
-            raise ValueError(f"PDin too short for SD8500: {len(b)} bytes (expected >= 14)")
+        if len(b) < 16:
+            raise ValueError(f"PDin too short for SD8500: {len(b)} bytes (expected >= 16)")
 
         totaliser_raw = struct.unpack(">f", b[0:4])[0]
         flow_raw      = struct.unpack(">h", b[4:6])[0]
         temp_raw16    = struct.unpack(">h", b[8:10])[0]
         pres_raw16    = struct.unpack(">h", b[12:14])[0]
 
+        # Extract the status (lower 4 bits of byte 15)
+        status_code = b[15] & 0x0F
+        status_map = {
+            0: "OK",
+            1: "Maintenance",
+            2: "Out of spec",
+            3: "Functional check",
+            4: "Failure"
+        }
+
+        status = status_map.get(status_code, f"Unknown ({status_code})")
+
+        prefix = "sd8500_"
         return {
-            "totaliser_m3":   float(totaliser_raw),
-            "flow_m3_h":      float(flow_raw) * 0.01,
-            "temperature_c":  float(temp_raw16) * 0.01,
-            "pressure_bar":   float(pres_raw16) * 0.01,
+            f"{prefix}totaliser_m3":   float(totaliser_raw),
+            f"{prefix}flow_m3_h":      float(flow_raw) * 0.01,
+            f"{prefix}temperature_c":  float(temp_raw16) * 0.01,
+            f"{prefix}pressure_bar":   float(pres_raw16) * 0.01,
+            f"{prefix}status":         status,
         }
 
     # module: 4 temperature sensors 
@@ -261,6 +276,52 @@ class IoLinkMaster:
             "dewpoint_banner_1_dewpoint": float(dewpoint_c),
         }
 
+    # Sensor: Michell dew point via DP2200
+    def decode_michell_dewpoint(self, hex_value: str) -> Dict[str, float]:
+        """
+        Decode Michell dew point transmitter signal via DP2200 + IO-Link master.
+
+        DP2200 process data (BigEndian):
+            - 4 bytes total (RecordT 32 bit)
+            - Bytes 0..1: Current, IntegerT (16 bit), scaled:
+                current_mA = current_raw * 0.001
+            Special values:
+                32764  (0x7FFC) : NoData
+                -32760 (0x8008) : Underload (UL)
+                32760  (0x7FF8) : Overload (OL)
+            - Remaining bits contain OUT1 status (ignored here).
+
+        Michell dew point mapping:
+            4–20 mA → -110 to +20 °C (linear) (NOTE: sticker says -100, 20)
+        """
+
+        b = bytes.fromhex(hex_value)
+        if len(b) < 2:
+            raise ValueError(f"Expected at least 2 bytes, got {len(b)} from {hex_value!r}")
+
+        # 16-bit signed integer, big-endian
+        current_raw = struct.unpack(">h", b[0:2])[0]
+
+        # Handle DP2200 special codes → treat as NaN
+        if current_raw in (32764, -32760, 32760):
+            current_mA = float("nan")
+        else:
+            current_mA = current_raw * 0.001  # raw → mA
+
+        # 4–20 mA → -110 to +20 °C
+        if math.isnan(current_mA):
+            dewpoint_c = float("nan")
+        else:
+            # Linear conversion: (value - 4 mA) / (16 mA) * range_span + min_value
+            dewpoint_c = (current_mA - 4.0) / 16.0 * (20.0 - (-110.0)) + (-110.0)
+            # Clamp to valid range
+            dewpoint_c = max(-110.0, min(20.0, dewpoint_c))
+
+        return {
+            "michell_dewpoint_current_mA": float(current_mA),
+            "michell_dewpoint_c": float(dewpoint_c),
+        }
+
     # ------------------------------
     # Sampling
     # ------------------------------
@@ -298,8 +359,9 @@ class IoLinkMaster:
         if sd8500_port is not None:
             try:
                 hx = self.get_pdin_hex(sd8500_port, timeout=timeout)
+                print("SD8500 value:", hx)
                 if hx:
-                    row.update(self.decode_sd8500_pdin(hx, prefix="sd8500"))
+                    row.update(self.decode_sd8500_pdin(hx))
             except Exception as exc:
                 print(f"[IoLinkMaster] SD8500 error: {exc}")
 
@@ -336,8 +398,9 @@ class IoLinkMaster:
         if michell_port is not None:
             try:
                 hx = self.get_pdin_hex(michell_port, timeout=timeout)
+                print("hx michell dewpoint", hx)
                 if hx:
-                    row.update(self.decode_analog_current_pdin(hx, prefix="dewpoint_michell"))
+                    row.update(self.decode_michell_dewpoint(hx))
             except Exception as exc:
                 print(f"[IoLinkMaster] Michell dewpoint error: {exc}")
 
@@ -345,10 +408,8 @@ class IoLinkMaster:
         if banner_dp1_port is not None:
             try:
                 hx = self.get_pdin_hex(banner_dp1_port, timeout=timeout)
-                print("hx from port:", hx)
                 if hx:
                     row.update(self.decode_banner_dewpoint_pdin(hx))
-                    print("row after writing:", row)
             except Exception as exc:
                 print(f"[IoLinkMaster] Banner dewpoint #1 error: {exc}")
 
@@ -365,6 +426,7 @@ class IoLinkMaster:
         if pt100_module_port is not None:
             try:
                 hx = self.get_pdin_hex(pt100_module_port, timeout=timeout)
+                print("pt100:", hx)
                 if hx:
                     row.update(self.decode_al2284_pdin(hx))
             except Exception as exc:
