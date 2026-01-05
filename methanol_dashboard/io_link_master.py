@@ -64,7 +64,7 @@ class IoLinkMaster:
     # ------------------------------
 
     # Sensor: decode sd6500
-    def decode_sd6500_pdin(self, hex_value: str) -> Dict[str, float]:
+    def decode_sd6500_pdin(self, hex_value: str, prefix: str) -> Dict[str, float]:
         
         """
         Decode SD6500 PDin.
@@ -104,14 +104,14 @@ class IoLinkMaster:
 
         status = status_map.get(status_code, f"Unknown ({status_code})")
 
-        prefix = "sd6500_"
+        #prefix = "sd6500_"
 
         return {
-            f"{prefix}totaliser_m3":   float(totaliser_raw),
-            f"{prefix}flow_m3_h":      float(flow_raw) * 0.01,
-            f"{prefix}temperature_c":  float(temp_raw16) * 0.01,
-            f"{prefix}pressure_bar":   float(pres_raw16) * 0.01,
-            f"{prefix}status":         status,
+            f"{prefix}_totaliser_m3":   float(totaliser_raw),
+            f"{prefix}_flow_m3_h":      float(flow_raw) * 0.01,
+            f"{prefix}_temperature_c":  float(temp_raw16) * 0.01,
+            f"{prefix}_pressure_bar":   float(pres_raw16) * 0.01,
+            f"{prefix}_status":         status,
         }
 
     # Sensor: decode sd8500
@@ -185,13 +185,20 @@ class IoLinkMaster:
         t3 = struct.unpack(">f", b[8:12])[0]
         t4 = struct.unpack(">f", b[12:16])[0]
 
-        print("temp t1:", t1)
+        if t1 == 3.299999965482712e+38:
+            t1 = float("nan")
+        if t2 == 3.299999965482712e+38:
+            t2 = float("nan")
+        if t3 == 3.299999965482712e+38:
+            t3 = float("nan")
+        if t4 == 3.299999965482712e+38:
+            t4 = float("nan")
 
         return {
-            "pt100_1_degC": float(t1),
-           # "pt100_2_degC": float(t2),
-           # "pt100_3_degC": float(t3),
-           # "pt100_4_degC": float(t4),
+           "pt100_1_degC": float(t1),
+           "pt100_2_degC": float(t2),
+           "pt100_3_degC": float(t3),
+           "pt100_4_degC": float(t4),
         }
  
     # Sensor: Senz-Tx oxygen sensor
@@ -243,7 +250,7 @@ class IoLinkMaster:
         }
 
     # Banner dewpoint via Modbus–IO–Link (S15C)
-    def decode_banner_dewpoint_pdin(self, hex_value: str) -> Dict[str, float]:
+    def decode_banner_dewpoint_pdin(self, hex_value: str, prefix: str) -> Dict[str, float]:
 
         """
         Decode Banner dewpoint sensor values coming via a Modbus–IO–Link converter (Banner S15C).
@@ -290,9 +297,9 @@ class IoLinkMaster:
         print("dewpoint:", dewpoint_c)
 
         return {
-            "dewpoint_banner_1_Humidity": float(humidity_rh),
-            "dewpoint_banner_1_degreeC": float(temperature_c),
-            "dewpoint_banner_1_dewpoint": float(dewpoint_c),
+            f"{prefix}_Humidity": float(humidity_rh),
+            f"{prefix}_degreeC": float(temperature_c),
+            f"{prefix}_dewpoint": float(dewpoint_c),
         }
 
     # Sensor: Michell dew point via DP2200
@@ -428,7 +435,7 @@ class IoLinkMaster:
             try:
                 hx = self.get_pdin_hex(banner_dp1_port, timeout=timeout)
                 if hx:
-                    row.update(self.decode_banner_dewpoint_pdin(hx))
+                    row.update(self.decode_banner_dewpoint_pdin(hx, prefix="dewpoint_banner_1"))
             except Exception as exc:
                 print(f"[IoLinkMaster] Banner dewpoint #1 error: {exc}")
 

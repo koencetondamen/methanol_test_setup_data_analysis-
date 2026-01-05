@@ -1,0 +1,7 @@
+# Ignore everything in data/experiments...
+data/experiments/*
+
+# ...but keep these three files
+!data/experiments/20251229_125614_experiment_jeroen.csv
+!data/experiments/20251229_125614_experiment_jeroen_meta.json
+!data/experiments/20251229_125614_experiment_jeroen_events.csv

@@ -14,12 +14,12 @@ IOT_HOST = "192.168.1.250"  # change when needed
 # Adjust these to match your final wiring once the hardware is connected.
 
 PORT_SD8500             = 1              # Testo SD8500
-PORT_SD6500_1           = None           # Testo SD6500 #1
-PORT_SD6500_2           = None           # Testo SD6500 #2
-PORT_SENXTX_ANALOG      = None           # SenxTx via analogue IO-Link (DP2200 or similar)
+PORT_SD6500_1           = 2              # Testo SD6500 #1
+PORT_SD6500_2           = 3           # Testo SD6500 #2
+PORT_SENXTX_ANALOG      = 4           # SenxTx via analogue IO-Link (DP2200 or similar)
 PORT_MICHELL_ANALOG     = 5              # Dewpoint Michell via analogue IO-Link
-PORT_BANNER_DEWPOINT_1  = None           # Dewpoint Banner #1 via Modbus–IO–Link converter
-PORT_BANNER_DEWPOINT_2  = None           # Dewpoint Banner #2 via Modbus–IO–Link converter
+PORT_BANNER_DEWPOINT_1  = 6           # Dewpoint Banner #1 via Modbus–IO–Link converter
+PORT_BANNER_DEWPOINT_2  = 7           # Dewpoint Banner #2 via Modbus–IO–Link converter
 PORT_PT100_MODULE       = 8              # 4-channel PT100 IO-Link module (AL2284)
 
 # --------------------------
@@ -63,21 +63,50 @@ SENSOR_FIELDS = [
         "label": "SD8500 – status",
         "unit": "",
     },
+
     {
         "field": "sd6500_1_flow_m3_h",
-        "label": "SD6500 #1 – flow [m³/h]",
+        "label": "SD6500_1 – flow [m³/h]",
         "unit": "m³/h",
     },
-    {
+        {
         "field": "sd6500_1_temperature_c",
-        "label": "SD6500 #1 – temperature [°C]",
+        "label": "SD6500_1 temperature [°C]",
         "unit": "°C",
     },
     {
+        "field": "sd6500_1_pressure_bar",
+        "label": "SD6500_1 – pressure [bar]",
+        "unit": "bar",
+    },
+    {
+        "field": "sd6500_1_status",
+        "label": "SD6500_1 – status",
+        "unit": "",
+    },
+
+    {
         "field": "sd6500_2_flow_m3_h",
-        "label": "SD6500 #2 – flow [m³/h]",
+        "label": "SD6500_2 – flow [m³/h]",
         "unit": "m³/h",
     },
+        {
+        "field": "sd6500_2_temperature_c",
+        "label": "SD6500_2 temperature [°C]",
+        "unit": "°C",
+    },
+    {
+        "field": "sd6500_2_pressure_bar",
+        "label": "SD6500_2 – pressure [bar]",
+        "unit": "bar",
+    },
+    {
+        "field": "sd6500_2_status",
+        "label": "SD6500_2 – status",
+        "unit": "",
+    },
+
+
     {
         "field": "senxtx_o2_current_mA",
         "label": "SenxTx – current [mA]",
@@ -88,6 +117,7 @@ SENSOR_FIELDS = [
         "label": "SenxTx – level [%]",
         "unit": "%",
     },
+
     {
         "field": "michell_dewpoint_current_mA",
         "label": "Dewpoint Michell – current [mA]",
@@ -98,44 +128,57 @@ SENSOR_FIELDS = [
         "label": "Dewpoint Michell – Dewpoint [°C]",
         "unit": "°C",
     },
-    # {
-    #     "field": "dewpoint_banner_1_Humidity",
-    #     "label": "Dewpoint Banner #1 – Humidity [%]",
-    #     "unit": "%",
-    # },
-    # {
-    #     "field": "dewpoint_banner_1_degreeC",
-    #     "label": "Dewpoint Banner #1 – Temperature [°C]",
-    #     "unit": "°C",
-    # },
-    # {
-    #     "field": "dewpoint_banner_1_dewpoint",
-    #     "label": "Dewpoint Banner #1 – dewpoint [°C]",
-    #     "unit": "°C",
-    # },
-    # {
-    #     "field": "dewpoint_banner_2_degC",
-    #     "label": "Dewpoint Banner #2 – dewpoint [°C]",
-    #     "unit": "°C",
-    # },
+
+    {
+        "field": "dewpoint_banner_1_Humidity",
+        "label": "Dewpoint Banner #1 – Humidity [%]",
+        "unit": "%",
+    },
+    {
+        "field": "dewpoint_banner_1_degreeC",
+        "label": "Dewpoint Banner #1 – Temperature [°C]",
+        "unit": "°C",
+    },
+    {
+        "field": "dewpoint_banner_1_dewpoint",
+        "label": "Dewpoint Banner #1 – dewpoint [°C]",
+        "unit": "°C",
+    },
+
+    {
+        "field": "dewpoint_banner_2_Humidity",
+        "label": "Dewpoint Banner #2 – Humidity [%]",
+        "unit": "%",
+    },
+    {
+        "field": "dewpoint_banner_2_degreeC",
+        "label": "Dewpoint Banner #2 – Temperature [°C]",
+        "unit": "°C",
+    },
+    {
+        "field": "dewpoint_banner_2_dewpoint",
+        "label": "Dewpoint Banner #2 – dewpoint [°C]",
+        "unit": "°C",
+    },
+
     {
         "field": "pt100_1_degC",
         "label": "PT100 #1 – temperature [°C]",
         "unit": "°C",
     },
-    # {
-    #     "field": "pt100_2_degC",
-    #     "label": "PT100 #2 – temperature [°C]",
-    #     "unit": "°C",
-    # },
-    # {
-    #     "field": "pt100_3_degC",
-    #     "label": "PT100 #3 – temperature [°C]",
-    #     "unit": "°C",
-    # },
-    # {
-    #     "field": "pt100_4_degC",
-    #     "label": "PT100 #4 – temperature [°C]",
-    #     "unit": "°C",
-    # },
+    {
+        "field": "pt100_2_degC",
+        "label": "PT100 #2 – temperature [°C]",
+        "unit": "°C",
+    },
+    {
+        "field": "pt100_3_degC",
+        "label": "PT100 #3 – temperature [°C]",
+        "unit": "°C",
+    },
+    {
+        "field": "pt100_4_degC",
+        "label": "PT100 #4 – temperature [°C]",
+        "unit": "°C",
+    },
 ]
