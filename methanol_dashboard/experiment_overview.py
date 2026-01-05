@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
@@ -30,7 +31,6 @@ SENSOR_CHECKLIST: List[Dict[str, Any]] = [
     {"name": "PT100 #4", "columns_any": ["pt100_4_degC"]},
     {"name": "Spare / future sensor", "columns_any": []},
 ]
-
 
 EVENT_LOG_SUFFIXES = [
     "_events.csv",
@@ -93,7 +93,7 @@ def _infer_entity(col: str, label: str = "", unit: str = "") -> str:
         return "Flow"
     if "press" in l or "_pressure_" in c:
         return "Pressure"
-    if "temp" in l or "_degc" in c or "_temperature_" in c or c.endswith("_temperature_c"):
+    if "temp" in l or "_degc" in c or "_temperature_" in c or c.endswith("_temperature_c") or "degreec" in c:
         return "Temperature"
     if "dewpoint" in l or "dewpoint" in c:
         return "Dewpoint"
@@ -113,7 +113,7 @@ def _infer_entity(col: str, label: str = "", unit: str = "") -> str:
 
 def _infer_unit_from_col(col: str) -> str:
     c = col.lower()
-    if c.endswith("_degc") or c.endswith("_degreec") or "_temperature_" in c or c.endswith("_temperature_c"):
+    if c.endswith("_degc") or c.endswith("_degreec") or "_temperature_" in c or c.endswith("_temperature_c") or c.endswith("_temperature") or c.endswith("_degreec"):
         return "°C"
     if c.endswith("_flow_m3_h") or "_flow_" in c:
         return "m³/h"
@@ -155,6 +155,10 @@ def _coerce_invalid_numeric_sentinels(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _sensor_active(df: pd.DataFrame, columns_any: List[str]) -> bool:
+    """
+    Active iff ANY detected column has at least one "meaningful" non-invalid value.
+    Invalid indicators: NaN, 0, huge sentinel, 3.299999965e38, +/-inf.
+    """
     for c in columns_any:
         if c not in df.columns:
             continue
@@ -164,7 +168,6 @@ def _sensor_active(df: pd.DataFrame, columns_any: List[str]) -> bool:
             s = s.replace([float("inf"), float("-inf")], pd.NA)
             s = s.mask(s.abs() > HUGE_SENTINEL_ABS, pd.NA)
             s = s.mask(s.isin(list(SPECIFIC_SENTINELS)), pd.NA)
-            # 0 counts as invalid indicator for active state
             s = s.mask(s == 0, pd.NA)
             if s.notna().any():
                 return True
@@ -420,9 +423,7 @@ def _corr_at_positive_lag_steps(ref: np.ndarray, other: np.ndarray, lag_steps: i
     """
     Returns correlations for lags 1..lag_steps (exactly lag_steps values).
 
-    Definition here:
-      lag k means we compare ref[t] with other[t+k] (other is delayed by k steps).
-    So ref "leads" other by k samples.
+    lag k: corr(ref[t], other[t+k])
     """
     n = min(len(ref), len(other))
     ref = ref[:n]
@@ -453,12 +454,10 @@ def _annotate_heatmap(ax, data: np.ndarray, cmap, vmin: float, vmax: float, fmt:
             val = data[i, j]
             if not np.isfinite(val):
                 text = "—"
-                # use neutral color for missing
                 color = "black"
             else:
                 text = fmt.format(val)
                 rgba = cmap(norm(val))
-                # luminance heuristic
                 lum = 0.299 * rgba[0] + 0.587 * rgba[1] + 0.114 * rgba[2]
                 color = "white" if lum < 0.5 else "black"
 
@@ -503,19 +502,19 @@ def show_overview_window(bundle: ExperimentBundle, overview: Dict[str, Any]) -> 
 
     import matplotlib
     matplotlib.use("TkAgg")
-    import matplotlib.dates as mdates
     from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
     from matplotlib.figure import Figure
+    import matplotlib.cm as cm
 
     cfg_meta = _build_field_meta_from_config()
 
     df = bundle.df
     if "timestamp_utc" in df.columns:
-        df = df.sort_values("timestamp_utc")
+        df = df.sort_values("timestamp_utc").reset_index(drop=True)
 
     events_df = bundle.events
     if events_df is not None and "timestamp_utc" in events_df.columns:
-        events_df = events_df.dropna(subset=["timestamp_utc"]).sort_values("timestamp_utc")
+        events_df = events_df.dropna(subset=["timestamp_utc"]).sort_values("timestamp_utc").reset_index(drop=True)
 
     def to_text_report() -> str:
         lines: List[str] = []
@@ -599,7 +598,7 @@ def show_overview_window(bundle: ExperimentBundle, overview: Dict[str, Any]) -> 
     # Root
     root = tk.Tk()
     root.title(f"Experiment Overview — {overview['experiment_name']}")
-    root.geometry("1250x850")
+    root.geometry("1250x900")
 
     nb = ttk.Notebook(root)
     nb.pack(fill="both", expand=True, padx=10, pady=10)
@@ -693,14 +692,26 @@ def show_overview_window(bundle: ExperimentBundle, overview: Dict[str, Any]) -> 
     ts_controls = ttk.Frame(tab_ts)
     ts_controls.pack(fill="x", padx=10, pady=10)
 
-    ttk.Label(ts_controls, text="Y-entity:").grid(row=0, column=0, sticky="w")
+    # X-axis mode dropdown (NEW)
+    ttk.Label(ts_controls, text="X-axis:").grid(row=0, column=0, sticky="w")
+    ts_x_mode = tk.StringVar(value="Amsterdam time")
+    ts_x_mode_cb = ttk.Combobox(
+        ts_controls,
+        textvariable=ts_x_mode,
+        values=["Amsterdam time", "t+ (seconds)", "Sample index"],
+        state="readonly",
+        width=18,
+    )
+    ts_x_mode_cb.grid(row=0, column=1, sticky="w", padx=(6, 18))
+
+    ttk.Label(ts_controls, text="Y-entity:").grid(row=0, column=2, sticky="w")
     ts_entity = tk.StringVar(value=entity_names[0] if entity_names else "")
     ts_entity_cb = ttk.Combobox(ts_controls, textvariable=ts_entity, values=entity_names, state="readonly", width=22)
-    ts_entity_cb.grid(row=0, column=1, sticky="w", padx=(6, 18))
+    ts_entity_cb.grid(row=0, column=3, sticky="w", padx=(6, 18))
 
-    ttk.Label(ts_controls, text="Columns (multi-select):").grid(row=0, column=2, sticky="w")
+    ttk.Label(ts_controls, text="Columns (multi-select):").grid(row=0, column=4, sticky="w")
     ts_list = tk.Listbox(ts_controls, selectmode="extended", height=6, exportselection=False, width=55)
-    ts_list.grid(row=0, column=3, sticky="w", padx=(6, 18))
+    ts_list.grid(row=0, column=5, sticky="w", padx=(6, 18))
 
     def refresh_ts_columns(*_):
         ts_list.delete(0, tk.END)
@@ -760,7 +771,7 @@ def show_overview_window(bundle: ExperimentBundle, overview: Dict[str, Any]) -> 
     ts_y1 = tk.StringVar(value="")
 
     ttk.Checkbutton(axis_frame, text="X auto", variable=ts_x_auto).grid(row=0, column=0, sticky="w")
-    ttk.Label(axis_frame, text="Manual X (t+ s) from").grid(row=0, column=1, sticky="w", padx=(8, 0))
+    ttk.Label(axis_frame, text="Manual X from").grid(row=0, column=1, sticky="w", padx=(8, 0))
     ttk.Entry(axis_frame, textvariable=ts_x0, width=8).grid(row=0, column=2, sticky="w", padx=(6, 0))
     ttk.Label(axis_frame, text="to").grid(row=0, column=3, sticky="w", padx=(6, 0))
     ttk.Entry(axis_frame, textvariable=ts_x1, width=8).grid(row=0, column=4, sticky="w", padx=(6, 18))
@@ -782,30 +793,72 @@ def show_overview_window(bundle: ExperimentBundle, overview: Dict[str, Any]) -> 
     ts_canvas = FigureCanvasTkAgg(ts_fig, master=tab_ts)
     ts_canvas.get_tk_widget().pack(fill="both", expand=True, padx=10, pady=(0, 10))
 
-    def _draw_events_on_axis(ax, xlim=None):
+    def _draw_events_on_axis(ax, x_mode: str, xlim=None):
+        """
+        Draw events for any x-axis mode:
+          - Amsterdam time: use timestamp_utc converted to AMS
+          - t+ (seconds): use seconds since experiment start
+          - Sample index: map event timestamp to nearest sample index
+        """
         if not ts_show_events.get():
             return
         if events_df is None or "timestamp_utc" not in events_df.columns:
             return
+        if "timestamp_utc" not in df.columns or df["timestamp_utc"].dropna().empty:
+            return
 
-        ev = events_df
+        ev = events_df.dropna(subset=["timestamp_utc"]).copy()
+        if ev.empty:
+            return
+
+        start_utc, _ = _get_experiment_time_bounds(df)
+        if start_utc is None:
+            return
+
+        if x_mode == "Amsterdam time":
+            tz_ams = "Europe/Amsterdam"
+            ev_x = ev["timestamp_utc"].dt.tz_convert(tz_ams)
+        elif x_mode == "t+ (seconds)":
+            ev_x = (ev["timestamp_utc"] - start_utc).dt.total_seconds()
+        elif x_mode == "Sample index":
+            ts_arr = df["timestamp_utc"].dropna().to_numpy()
+            if len(ts_arr) == 0:
+                return
+            ev_ts = ev["timestamp_utc"].to_numpy()
+            idx = np.searchsorted(ts_arr, ev_ts, side="left")
+            idx = np.clip(idx, 0, len(ts_arr) - 1)
+
+            prev_idx = np.clip(idx - 1, 0, len(ts_arr) - 1)
+            d1 = np.abs(ts_arr[idx] - ev_ts)
+            d0 = np.abs(ts_arr[prev_idx] - ev_ts)
+            best = np.where(d0 <= d1, prev_idx, idx)
+            ev_x = best.astype(int)
+        else:
+            return
+
         if xlim is not None:
             lo, hi = xlim
-            ev = ev[(ev["timestamp_utc"] >= lo) & (ev["timestamp_utc"] <= hi)]
+            try:
+                mask = (ev_x >= lo) & (ev_x <= hi)
+                if hasattr(mask, "to_numpy"):
+                    mask = mask.to_numpy()
+                ev = ev.loc[mask].copy()
+                ev_x = ev_x[mask]
+            except Exception:
+                pass
 
-        if ev.empty:
+        if len(ev) == 0:
             return
 
         max_labels = 30
         do_labels = ts_label_events.get() and (len(ev) <= max_labels)
 
-        for _, r in ev.iterrows():
-            t_ev = r["timestamp_utc"]
+        for x_ev, (_, r) in zip(ev_x, ev.iterrows()):
             label = str(r.get("event", "")).strip()
-            ax.axvline(t_ev, linestyle="--", linewidth=1, alpha=0.5)
+            ax.axvline(x_ev, linestyle="--", linewidth=1, alpha=0.5)
             if do_labels and label:
                 ax.text(
-                    t_ev,
+                    x_ev,
                     0.98,
                     label,
                     rotation=90,
@@ -848,13 +901,33 @@ def show_overview_window(bundle: ExperimentBundle, overview: Dict[str, Any]) -> 
 
         ts_ax.clear()
         sample_period_s = _estimate_sample_period_s(df)
-        t = df["timestamp_utc"]
+
+        x_mode = ts_x_mode.get()
+        start_utc, _ = _get_experiment_time_bounds(df)
+
+        if x_mode == "Amsterdam time":
+            tz_ams = "Europe/Amsterdam"
+            x = df["timestamp_utc"].dt.tz_convert(tz_ams)
+            x_label = "Time (Amsterdam)"
+        elif x_mode == "t+ (seconds)":
+            if start_utc is None:
+                messagebox.showerror("No start time", "Cannot compute t+ without a valid timestamp_utc start.")
+                return
+            x = (df["timestamp_utc"] - start_utc).dt.total_seconds()
+            x_label = "t+ (seconds)"
+        elif x_mode == "Sample index":
+            x = np.arange(len(df), dtype=int)
+            x_label = "Sample index"
+        else:
+            x = df["timestamp_utc"]
+            x_label = "Time"
 
         try:
             win_s = float(ts_ma_win.get()) if ts_ma_on.get() else 0.0
         except Exception:
             messagebox.showerror("Invalid moving average window", "Window must be a number (seconds).")
             return
+
         try:
             alpha = float(ts_ema_alpha.get()) if ts_ema_on.get() else 0.0
         except Exception:
@@ -874,25 +947,32 @@ def show_overview_window(bundle: ExperimentBundle, overview: Dict[str, Any]) -> 
                     messagebox.showerror("Invalid EMA alpha", str(e))
                     return
 
-            ts_ax.plot(t, y, label=meta["label"])
+            ts_ax.plot(x, y, label=meta["label"])
 
             if ts_unc_on.get():
                 sigma = _assumed_uncertainty(meta["unit"], meta["entity"])
                 if sigma > 0:
-                    ts_ax.fill_between(t, y - sigma, y + sigma, alpha=0.15)
+                    ts_ax.fill_between(x, y - sigma, y + sigma, alpha=0.15)
 
-        start_utc, _ = _get_experiment_time_bounds(df)
         if not ts_x_auto.get():
             try:
                 x0 = float(ts_x0.get())
                 x1 = float(ts_x1.get())
-                if start_utc is None:
-                    raise ValueError("Cannot compute t+ without experiment start time.")
-                lo = start_utc + pd.to_timedelta(x0, unit="s")
-                hi = start_utc + pd.to_timedelta(x1, unit="s")
-                ts_ax.set_xlim(lo, hi)
+                if x_mode == "Amsterdam time":
+                    if start_utc is None:
+                        raise ValueError("Cannot compute manual range without experiment start time.")
+                    tz_ams = "Europe/Amsterdam"
+                    lo = (start_utc + pd.to_timedelta(x0, unit="s")).tz_convert(tz_ams)
+                    hi = (start_utc + pd.to_timedelta(x1, unit="s")).tz_convert(tz_ams)
+                    ts_ax.set_xlim(lo, hi)
+                elif x_mode == "t+ (seconds)":
+                    ts_ax.set_xlim(x0, x1)
+                elif x_mode == "Sample index":
+                    ts_ax.set_xlim(int(x0), int(x1))
+                else:
+                    ts_ax.set_xlim(x0, x1)
             except Exception as e:
-                messagebox.showerror("Invalid X limits", f"X limits must be valid t+ seconds.\n\n{e}")
+                messagebox.showerror("Invalid X limits", f"Invalid X limits for mode '{x_mode}'.\n\n{e}")
                 return
 
         if not ts_y_auto.get():
@@ -903,24 +983,22 @@ def show_overview_window(bundle: ExperimentBundle, overview: Dict[str, Any]) -> 
                 return
 
         unit = _get_col_meta(chosen_cols[0], cfg_meta)["unit"] if chosen_cols else ""
-        ts_ax.set_xlabel("Time (UTC)")
+        ts_ax.set_xlabel(x_label)
         ts_ax.set_ylabel(f"{ent} [{unit}]" if unit else ent)
 
         title = ts_title.get().strip() or f"{ent} vs time"
         ts_ax.set_title(title)
 
-        # events overlay using visible x range if possible
         try:
-            lo_num, hi_num = ts_ax.get_xlim()
-            lo_dt = pd.to_datetime(mdates.num2date(lo_num), utc=True)
-            hi_dt = pd.to_datetime(mdates.num2date(hi_num), utc=True)
-            _draw_events_on_axis(ts_ax, xlim=(lo_dt, hi_dt))
+            lo, hi = ts_ax.get_xlim()
+            _draw_events_on_axis(ts_ax, x_mode=x_mode, xlim=(lo, hi))
         except Exception:
-            _draw_events_on_axis(ts_ax, xlim=None)
+            _draw_events_on_axis(ts_ax, x_mode=x_mode, xlim=None)
 
         ts_ax.grid(True)
         ts_ax.legend(loc="best")
-        ts_fig.autofmt_xdate()
+        if x_mode == "Amsterdam time":
+            ts_fig.autofmt_xdate()
         ts_canvas.draw()
 
     ttk.Button(title_frame, text="Plot timeseries", command=ts_plot).pack(side="left")
@@ -928,7 +1006,6 @@ def show_overview_window(bundle: ExperimentBundle, overview: Dict[str, Any]) -> 
     # =========================
     # Scatterplot tab (X vs Y)
     # =========================
-    
     tab_sc = ttk.Frame(nb)
     nb.add(tab_sc, text="Scatterplot")
 
@@ -1105,8 +1182,6 @@ def show_overview_window(bundle: ExperimentBundle, overview: Dict[str, Any]) -> 
     corr_canvas.get_tk_widget().pack(fill="both", expand=True, padx=10, pady=(0, 10))
 
     def plot_corr_matrix():
-        import matplotlib.cm as cm
-
         sel = list(corr_list.curselection())
         cols: List[str] = getattr(corr_list, "_cols", [])  # type: ignore[attr-defined]
         if len(sel) < 2:
@@ -1128,7 +1203,6 @@ def show_overview_window(bundle: ExperimentBundle, overview: Dict[str, Any]) -> 
 
         corr_ax.set_title("Correlation matrix (Pearson)")
 
-        # annotate values
         _annotate_heatmap(corr_ax, corr, cmap=cmap, vmin=-1, vmax=1, fmt="{:.2f}", fontsize=8)
 
         corr_fig.colorbar(im, ax=corr_ax, fraction=0.046, pad=0.04, label="corr")
@@ -1191,8 +1265,6 @@ def show_overview_window(bundle: ExperimentBundle, overview: Dict[str, Any]) -> 
     xcorr_canvas.get_tk_widget().pack(fill="both", expand=True, padx=10, pady=(0, 10))
 
     def plot_xcorr_matrix():
-        import matplotlib.cm as cm
-
         ref = x_ref.get()
         if not ref:
             messagebox.showerror("Missing selection", "Select a reference signal.")
@@ -1213,7 +1285,6 @@ def show_overview_window(bundle: ExperimentBundle, overview: Dict[str, Any]) -> 
             messagebox.showerror("Invalid lag width", str(e))
             return
 
-        # sample period for labeling (still “timesteps” primary)
         sample_period_s = _estimate_sample_period_s(df)
 
         ref_arr = _clean_numeric_for_plot(df[ref]).to_numpy(dtype=float)
@@ -1227,7 +1298,6 @@ def show_overview_window(bundle: ExperimentBundle, overview: Dict[str, Any]) -> 
         cmap = cm.get_cmap("coolwarm")
         im = xcorr_ax.imshow(mat, vmin=-1, vmax=1, aspect="auto", cmap=cmap)
 
-        # x ticks: lag 1..L, optionally show seconds too
         xcorr_ax.set_xticks(np.arange(L))
         xcorr_ax.set_xticklabels([f"{k}\n({k*sample_period_s:.1f}s)" for k in range(1, L + 1)], fontsize=9)
         xcorr_ax.set_yticks(np.arange(len(others)))
@@ -1240,7 +1310,6 @@ def show_overview_window(bundle: ExperimentBundle, overview: Dict[str, Any]) -> 
 
         xcorr_fig.colorbar(im, ax=xcorr_ax, fraction=0.046, pad=0.04, label="corr")
 
-        # quick peak info across all cells
         if np.isfinite(mat).any():
             idx = np.nanargmax(np.abs(mat))
             r_i, c_i = np.unravel_index(idx, mat.shape)
@@ -1283,7 +1352,8 @@ def resolve_csv_path(csv_name_or_path: str) -> Path:
     p = Path(csv_name_or_path)
     if p.exists():
         return p
-    return Path(config.EXPERIMENT_DIR) / csv_name_or_path
+    exp_dir = Path(getattr(config, "EXPERIMENT_DIR", Path(__file__).resolve().parent / "data" / "experiments"))
+    return exp_dir / csv_name_or_path
 
 
 def main() -> None:
@@ -1291,7 +1361,7 @@ def main() -> None:
     parser.add_argument("--csv", required=False, help="CSV filename (in config.EXPERIMENT_DIR) or full path to CSV.")
     args = parser.parse_args()
 
-    CSV_FILENAME = None  # e.g. "20251230_140546_nnn.csv"
+    CSV_FILENAME = None  # e.g. "20251230_140546_demo.csv"
     csv_arg = args.csv or CSV_FILENAME
     if not csv_arg:
         raise SystemExit("Provide --csv <file.csv> or set CSV_FILENAME in the script.")
