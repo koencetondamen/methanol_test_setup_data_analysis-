@@ -1,5 +1,4 @@
-# methanol_dashboard/run.py
-
+# Methanol_dashboard/run.py
 from . import config
 
 # Choose master implementation based on simulation flag
@@ -12,7 +11,6 @@ else:
 from .acquisition import AcquisitionManager
 from .experiment_log import ExperimentLogger
 from .dashboard.app import create_app
-
 
 def main() -> None:
 

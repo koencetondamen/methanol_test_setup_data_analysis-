@@ -74,6 +74,12 @@ class IoLinkMaster:
             Bytes 4..5   : flow_raw      (Int16  BE)  -> [m³/h] * 0.01
             Bytes 8..9   : temp_raw16    (Int16  BE)  -> [°C]   * 0.01
             Bytes 12..13 : pres_raw16    (Int16  BE)  -> [bar]  * 0.01
+            Byte  15     : UIntegerT     (4 Bit)      -> 
+                        0 - Ok, 
+                        1 - Maintenance, 
+                        2 - Out of spec, 
+                        3 - Functional Check, 
+                        4 - Failure
         """
 
         b = bytes.fromhex(hex_value)
@@ -86,11 +92,26 @@ class IoLinkMaster:
         temp_raw16    = struct.unpack(">h", b[8:10])[0]
         pres_raw16    = struct.unpack(">h", b[12:14])[0]
 
+        # Extract the status (lower 4 bits of byte 15)
+        status_code = b[15] & 0x0F
+        status_map = {
+            0: "OK",
+            1: "Maintenance",
+            2: "Out of spec",
+            3: "Functional check",
+            4: "Failure"
+        }
+
+        status = status_map.get(status_code, f"Unknown ({status_code})")
+
+        prefix = "sd6500_"
+
         return {
-            "totaliser_m3":   float(totaliser_raw),
-            "flow_m3_h":      float(flow_raw) * 0.01,
-            "temperature_c":  float(temp_raw16) * 0.01,
-            "pressure_bar":   float(pres_raw16) * 0.01,
+            f"{prefix}totaliser_m3":   float(totaliser_raw),
+            f"{prefix}flow_m3_h":      float(flow_raw) * 0.01,
+            f"{prefix}temperature_c":  float(temp_raw16) * 0.01,
+            f"{prefix}pressure_bar":   float(pres_raw16) * 0.01,
+            f"{prefix}status":         status,
         }
 
     # Sensor: decode sd8500
@@ -205,12 +226,12 @@ class IoLinkMaster:
         else:
             current_mA = current_raw * 0.001  # raw → mA
 
-        # 4–20 mA → 0–96 % O₂
+        # 4–20 mA → 0–25 % O₂
         if math.isnan(current_mA):
             oxygen_percent = float("nan")
         else:
             oxygen_percent = (current_mA - 4.0) / 16.0 * 25.0  # (20 - 4) = 16 mA span
-            # Clamp to [0, 96]
+            # Clamp to [0, 25]
             if oxygen_percent < 0.0:
                 oxygen_percent = 0.0
             elif oxygen_percent > 25.0:
@@ -239,8 +260,6 @@ class IoLinkMaster:
         """
 
         b = self._hex_to_bytes(hex_value)
-
-        print("b", b)
 
         if len(b) < 8 or (len(b) % 2) != 0:
             raise ValueError(
