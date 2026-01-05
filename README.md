@@ -58,3 +58,11 @@ PORT_BANNER_DEWPOINT_1  = 6              # Dewpoint Banner #1 via Modbus–IO–
 PORT_BANNER_DEWPOINT_2  = 7              # Dewpoint Banner #2 via Modbus–IO–Link converter
 PORT_PT100_MODULE       = 8              # 4-channel PT100 IO-Link module (AL2284)
 ```
+
+
+## 5. Analyse Data
+
+To analyse data, we have an extensive UI to see a summary of the experiment, plot data in time series, scatter plots and correlation matrices. To run, do the following:
+
+in the main folder, run `python -m methanol_dashboard.experiment_overview --csv 20260105_173022_pseudodata.csv`. Where `20260105_173022_pseudodata.csv` is the name of the main .csv file. 
+
