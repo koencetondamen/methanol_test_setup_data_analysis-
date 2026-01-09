@@ -19,6 +19,11 @@ For a visual overview, see:
   [Architecture Diagram (PDF)](Documents/architecture.drawio.pdf) 
   (IO-Link master → Python → Acquisition → Dashboard & Logging)
 
+  - **Moneo COnfigure**  
+  program to configure IO-master link
+  username: koen.ceton@damen.com
+  password: moneoMONEO123! 
+
 These diagrams are the canonical references for wiring and software architecture.
 
 ## 2. Hardware Overview
