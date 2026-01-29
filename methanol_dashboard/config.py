@@ -27,7 +27,7 @@ PORT_PT100_MODULE       = 8              # 4-channel PT100 IO-Link module (AL228
 # --------------------------
 
 SAMPLE_PERIOD_S = 1.0           # seconds between samples
-HISTORY_MAX_SECONDS = 30 * 60   # keep 30 minutes of history in memory
+HISTORY_MAX_SECONDS = 300 * 60   # keep 300 minutes of history in memory
 
 # --------------------------
 # Data / logging directories
@@ -105,8 +105,6 @@ SENSOR_FIELDS = [
         "label": "SD6500_2 – status",
         "unit": "",
     },
-
-
     {
         "field": "senxtx_o2_current_mA",
         "label": "SenxTx – current [mA]",
