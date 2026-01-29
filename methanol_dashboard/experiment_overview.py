@@ -600,17 +600,53 @@ def show_overview_window(bundle: ExperimentBundle, overview: Dict[str, Any]) -> 
     root.title(f"Experiment Overview — {overview['experiment_name']}")
     root.geometry("1250x900")
 
-    nb = ttk.Notebook(root)
+    # Top-level layout: a top bar for small thumbnail + the notebook below
+    main_frame = ttk.Frame(root)
+    main_frame.pack(fill="both", expand=True)
+
+    # top_bar removed; thumbnail will be placed inside the Summary tab
+    top_bar = None
+
+    nb = ttk.Notebook(main_frame)
     nb.pack(fill="both", expand=True, padx=10, pady=10)
 
+    # Try to load container picture from project's Documents folder
+    try:
+        from PIL import Image, ImageTk
+        img_path = Path(__file__).resolve().parent.parent / "Documents" / "container_picture.png"
+        if img_path.exists():
+            # prepare small thumbnail (do not create a widget here)
+            img_small = Image.open(img_path)
+            img_thumb = img_small.copy()
+            img_thumb.thumbnail((160, 160))
+            tk_img_small = ImageTk.PhotoImage(img_thumb)
+            # store references to avoid GC; widget will be created in Summary header
+            root._container_img_small = tk_img_small
+            root._container_image_path = img_path
+        else:
+            root._container_image_path = None
+    except Exception:
+        root._container_image_path = None
+
     # =========================
-    # Summary tab
+    # Summary tab (with small thumbnail on the right)
     # =========================
     tab_summary = ttk.Frame(nb)
     nb.add(tab_summary, text="Summary")
 
-    frm = ttk.Frame(tab_summary)
-    frm.pack(fill="x", padx=10, pady=10)
+    header_frame = ttk.Frame(tab_summary)
+    header_frame.pack(fill="x", padx=10, pady=10)
+
+    frm = ttk.Frame(header_frame)
+    frm.pack(side="left", fill="x", expand=True)
+
+    # If we have a small image loaded earlier, place it on the right of the header
+    try:
+        if getattr(root, "_container_img_small", None):
+            lbl_img = ttk.Label(header_frame, image=root._container_img_small)
+            lbl_img.pack(side="right", padx=10, pady=6)
+    except Exception:
+        pass
 
     def add_row(label: str, value: str, row: int) -> None:
         ttk.Label(frm, text=label, width=16).grid(row=row, column=0, sticky="w", padx=(0, 8), pady=4)
@@ -1117,6 +1153,37 @@ def show_overview_window(bundle: ExperimentBundle, overview: Dict[str, Any]) -> 
     ttk.Button(title_frame, text="Plot timeseries", command=ts_plot).pack(side="left")
     ttk.Button(title_frame, text="Reset timeseries", command=ts_reset).pack(side="left", padx=(6, 0))
 
+    # ----------------------------
+    # Momentopname tab (large image)
+    # ----------------------------
+    try:
+        if getattr(root, "_container_image_path", None):
+            # create tab frame and large image widgets, but do NOT add the tab yet;
+            # the tab will be added at the end so it appears last in the notebook.
+            tab_img = ttk.Frame(nb)
+
+            # Canvas with scrollbars to show large image
+            img = Image.open(root._container_image_path)
+            tk_img_large = ImageTk.PhotoImage(img)
+
+            canvas = tk.Canvas(tab_img, width=min(img.width, 1200), height=min(img.height, 700))
+            hbar = ttk.Scrollbar(tab_img, orient="horizontal", command=canvas.xview)
+            vbar = ttk.Scrollbar(tab_img, orient="vertical", command=canvas.yview)
+            canvas.configure(xscrollcommand=hbar.set, yscrollcommand=vbar.set)
+            canvas.grid(row=0, column=0, sticky="nsew")
+            vbar.grid(row=0, column=1, sticky="ns")
+            hbar.grid(row=1, column=0, sticky="ew")
+            tab_img.rowconfigure(0, weight=1)
+            tab_img.columnconfigure(0, weight=1)
+
+            canvas_image = canvas.create_image(0, 0, anchor="nw", image=tk_img_large)
+            canvas.config(scrollregion=(0, 0, img.width, img.height))
+
+            # keep reference
+            root._container_img_large = tk_img_large
+    except Exception:
+        pass
+
     # =========================
     # Scatterplot tab (X vs Y)
     # =========================
@@ -1351,6 +1418,13 @@ def show_overview_window(bundle: ExperimentBundle, overview: Dict[str, Any]) -> 
     ttk.Entry(xcorr_top, textvariable=x_lag_steps, width=10).grid(row=0, column=3, sticky="w", padx=(6, 18))
 
     xcorr_info = ttk.Label(xcorr_top, text="ⓘ", cursor="question_arrow")
+
+    # If a prepared large-image tab exists, add it now so it appears at the very end
+    try:
+        if 'tab_img' in locals() and getattr(root, "_container_image_path", None):
+            nb.add(tab_img, text="momentopname")
+    except Exception:
+        pass
     xcorr_info.grid(row=0, column=4, sticky="w")
     Tooltip(
         xcorr_info,
@@ -1445,17 +1519,6 @@ def show_overview_window(bundle: ExperimentBundle, overview: Dict[str, Any]) -> 
     # =========================
     # Buttons row
     # =========================
-    btns = ttk.Frame(root)
-    btns.pack(fill="x", padx=10, pady=(0, 10))
-
-    def copy_to_clipboard():
-        root.clipboard_clear()
-        root.clipboard_append(to_text_report())
-        messagebox.showinfo("Copied", "Overview copied to clipboard.")
-
-    ttk.Button(btns, text="Copy overview to clipboard", command=copy_to_clipboard).pack(side="left")
-    ttk.Button(btns, text="Close", command=root.destroy).pack(side="right")
-
     root.mainloop()
 
 
