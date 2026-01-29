@@ -13,6 +13,7 @@ This simulation is kept in sync with the *current* logged columns:
 - michell_dewpoint_current_mA, michell_dewpoint_c
 - dewpoint_banner_1_Humidity, dewpoint_banner_1_degreeC, dewpoint_banner_1_dewpoint
 - dewpoint_banner_2_Humidity, dewpoint_banner_2_degreeC, dewpoint_banner_2_dewpoint
+- dewpoint_banner_3_Humidity, dewpoint_banner_3_degreeC, dewpoint_banner_3_dewpoint
 - pt100_1_degC .. pt100_4_degC
 
 Some backward-compatible aliases are also emitted:
@@ -63,6 +64,7 @@ class SimulatedIoLinkMaster:
         michell_port: Optional[int] = None,
         banner_dp1_port: Optional[int] = None,
         banner_dp2_port: Optional[int] = None,
+        banner_dp3_port: Optional[int] = None,
         pt100_module_port: Optional[int] = None,
         timeout: float = 1.0,
     ) -> Dict[str, Any]:
@@ -221,6 +223,22 @@ class SimulatedIoLinkMaster:
                     "dewpoint_banner_2_Humidity": humidity,
                     "dewpoint_banner_2_degreeC": temperature,
                     "dewpoint_banner_2_dewpoint": dewpoint,
+                }
+            )
+
+        # ----------------------------
+        # Dewpoint Banner #3
+        # ----------------------------
+        if banner_dp3_port is not None:
+            humidity = _clamp(wave(base=50.0, amp=6.5, period_s=680.0, noise=0.65), 0.0, 100.0)
+            temperature = wave(base=23.8, amp=0.95, period_s=510.0, noise=0.15)
+            dewpoint = wave(base=13.0, amp=2.1, period_s=510.0, noise=0.2)
+
+            row.update(
+                {
+                    "dewpoint_banner_3_Humidity": humidity,
+                    "dewpoint_banner_3_degreeC": temperature,
+                    "dewpoint_banner_3_dewpoint": dewpoint,
                 }
             )
 

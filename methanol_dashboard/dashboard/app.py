@@ -31,26 +31,39 @@ def create_app(
                     html.H3("Experiment control"),
                     html.Div(
                         [
-                            dcc.Input(
-                                id="exp-name",
-                                type="text",
-                                placeholder="Experiment name",
-                                style={"marginRight": "0.5rem"},
+                            html.Div(
+                                [
+                                    dcc.Input(
+                                        id="exp-name",
+                                        type="text",
+                                        placeholder="Experiment name",
+                                        style={"marginRight": "0.5rem"},
+                                    ),
+                                    dcc.Input(
+                                        id="exp-operator",
+                                        type="text",
+                                        placeholder="Operator",
+                                        style={"marginRight": "0.5rem"},
+                                    ),
+                                ],
+                                style={"marginBottom": "0.5rem"},
                             ),
-                            dcc.Input(
-                                id="exp-operator",
-                                type="text",
-                                placeholder="Operator",
-                                style={"marginRight": "0.5rem"},
+
+                            html.Div(
+                                dcc.Textarea(
+                                    id="exp-notes",
+                                    placeholder="Notes",
+                                    style={
+                                        "width": "100%",
+                                        "maxWidth": "600px",
+                                        "minHeight": "60px",
+                                        "maxHeight": "300px",
+                                        "resize": "none",
+                                    },
+                                ),
+                                style={"marginBottom": "0.5rem"},
                             ),
-                            dcc.Input(
-                                id="exp-notes",
-                                type="text",
-                                placeholder="Notes",
-                                style={"width": "300px", "marginRight": "0.5rem"},
-                            ),
-                        ],
-                        style={"marginBottom": "0.5rem"},
+                        ]
                     ),
                     html.Button("Start experiment", id="btn-start-exp", n_clicks=0),
                     html.Button(
@@ -121,6 +134,10 @@ def create_app(
         ],
         style={"maxWidth": "1200px", "margin": "0 auto", "fontFamily": "sans-serif"},
     )
+
+    # Make `exp-notes` user-resizable (remove clientside autosize to avoid JS errors)
+    # Users can manually resize vertically; keep sensible min/max heights.
+    # If you prefer autosize again, we can reintroduce a safer implementation.
 
     # ------------------------------------------------------------------
     # Callbacks
@@ -214,7 +231,7 @@ def create_app(
 
         return html.Table(
             [
-                html.Thead(html.Tr([html.Th("Time (UTC)"), html.Th("Action")])),
+                html.Thead(html.Tr([html.Th("Time (Europe/Amsterdam)"), html.Th("Action")])),
                 html.Tbody(rows),
             ],
             style={"width": "100%", "fontSize": "0.95rem"},
@@ -239,6 +256,17 @@ def create_app(
 
         x = pd.to_datetime(df[time_col], errors="coerce")
 
+        # Convert timestamps to Europe/Amsterdam for display on x-axis.
+        # If the parsed datetimes are tz-naive, assume they are UTC and localize first.
+        try:
+            if x.dt.tz is None:
+                x = x.dt.tz_localize("UTC").dt.tz_convert("Europe/Amsterdam")
+            else:
+                x = x.dt.tz_convert("Europe/Amsterdam")
+        except Exception:
+            # Fallback: re-parse and force UTC -> Europe/Amsterdam
+            x = pd.to_datetime(df[time_col], errors="coerce").dt.tz_localize("UTC").dt.tz_convert("Europe/Amsterdam")
+
         graphs = []
         for spec in config.SENSOR_FIELDS:
             field = spec["field"]
@@ -258,7 +286,7 @@ def create_app(
                 data=[go.Scatter(x=x, y=y, mode="lines", name=label)],
                 layout=go.Layout(
                     title=f"{label}{f' ({unit})' if unit else ''}",
-                    xaxis={"title": "Time"},
+                    xaxis={"title": "Time (Europe/Amsterdam)"},
                     yaxis={"title": unit or field},
                     margin={"l": 40, "r": 20, "t": 40, "b": 40},
                     height=280,

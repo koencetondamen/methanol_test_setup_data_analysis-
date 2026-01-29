@@ -30,6 +30,7 @@ def main() -> None:
         michell_port=config.PORT_MICHELL_ANALOG,
         banner_dp1_port=config.PORT_BANNER_DEWPOINT_1,
         banner_dp2_port=config.PORT_BANNER_DEWPOINT_2,
+        banner_dp3_port=config.PORT_BANNER_DEWPOINT_3,
         pt100_module_port=config.PORT_PT100_MODULE,
         timeout=1.0,
     )

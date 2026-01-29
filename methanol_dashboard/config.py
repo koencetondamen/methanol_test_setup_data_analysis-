@@ -20,7 +20,8 @@ PORT_SENXTX_ANALOG      = 4           # SenxTx via analogue IO-Link (DP2200 or s
 PORT_MICHELL_ANALOG     = 5              # Dewpoint Michell via analogue IO-Link
 PORT_BANNER_DEWPOINT_1  = 6           # Dewpoint Banner #1 via Modbus–IO–Link converter
 PORT_BANNER_DEWPOINT_2  = 7           # Dewpoint Banner #2 via Modbus–IO–Link converter
-PORT_PT100_MODULE       = 8              # 4-channel PT100 IO-Link module (AL2284)
+PORT_BANNER_DEWPOINT_3  = 8           # Dewpoint Banner #3 via Modbus–IO–Link converter
+PORT_PT100_MODULE       = None              # 4-channel PT100 IO-Link module (AL2284)
 
 # --------------------------
 # Acquisition parameters
@@ -156,6 +157,22 @@ SENSOR_FIELDS = [
     {
         "field": "dewpoint_banner_2_dewpoint",
         "label": "Dewpoint Banner #2 – dewpoint [°C]",
+        "unit": "°C",
+    },
+
+    {
+        "field": "dewpoint_banner_3_Humidity",
+        "label": "Dewpoint Banner #3 – Humidity [%]",
+        "unit": "%",
+    },
+    {
+        "field": "dewpoint_banner_3_degreeC",
+        "label": "Dewpoint Banner #3 – Temperature [°C]",
+        "unit": "°C",
+    },
+    {
+        "field": "dewpoint_banner_3_dewpoint",
+        "label": "Dewpoint Banner #3 – dewpoint [°C]",
         "unit": "°C",
     },
 

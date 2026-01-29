@@ -362,6 +362,7 @@ class IoLinkMaster:
         michell_port: Optional[int] = None,
         banner_dp1_port: Optional[int] = None,
         banner_dp2_port: Optional[int] = None,
+        banner_dp3_port: Optional[int] = None,
         pt100_module_port: Optional[int] = None,
         timeout: float = 1.0,
     ) -> Dict[str, Any]:
@@ -447,6 +448,15 @@ class IoLinkMaster:
                     row.update(self.decode_banner_dewpoint_pdin(hx, prefix="dewpoint_banner_2"))
             except Exception as exc:
                 print(f"[IoLinkMaster] Banner dewpoint #2 error: {exc}")
+
+        # Dewpoint Banner #3 ------------------------------------
+        if banner_dp3_port is not None:
+            try:
+                hx = self.get_pdin_hex(banner_dp3_port, timeout=timeout)
+                if hx:
+                    row.update(self.decode_banner_dewpoint_pdin(hx, prefix="dewpoint_banner_3"))
+            except Exception as exc:
+                print(f"[IoLinkMaster] Banner dewpoint #3 error: {exc}")
 
         # PT100 module (AL2284) --------------------------------
         if pt100_module_port is not None:

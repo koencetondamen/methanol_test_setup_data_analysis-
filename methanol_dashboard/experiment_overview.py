@@ -704,26 +704,20 @@ def show_overview_window(bundle: ExperimentBundle, overview: Dict[str, Any]) -> 
     )
     ts_x_mode_cb.grid(row=0, column=1, sticky="w", padx=(6, 18))
 
-    ttk.Label(ts_controls, text="Y-entity:").grid(row=0, column=2, sticky="w")
-    ts_entity = tk.StringVar(value=entity_names[0] if entity_names else "")
-    ts_entity_cb = ttk.Combobox(ts_controls, textvariable=ts_entity, values=entity_names, state="readonly", width=22)
-    ts_entity_cb.grid(row=0, column=3, sticky="w", padx=(6, 18))
-
-    ttk.Label(ts_controls, text="Columns (multi-select):").grid(row=0, column=4, sticky="w")
-    ts_list = tk.Listbox(ts_controls, selectmode="extended", height=6, exportselection=False, width=55)
-    ts_list.grid(row=0, column=5, sticky="w", padx=(6, 18))
+    # Show a single multi-select list of all numeric, listable columns
+    ttk.Label(ts_controls, text="Columns (multi-select):").grid(row=0, column=2, sticky="w")
+    ts_list = tk.Listbox(ts_controls, selectmode="extended", height=10, exportselection=False, width=80)
+    ts_list.grid(row=0, column=3, columnspan=3, sticky="w", padx=(6, 18))
 
     def refresh_ts_columns(*_):
         ts_list.delete(0, tk.END)
-        ent = ts_entity.get()
-        cols = entity_map.get(ent, [])
+        cols = listable_numeric_columns()
         for c in cols:
             meta = _get_col_meta(c, cfg_meta)
             unit = meta["unit"]
             ts_list.insert(tk.END, f"{c}   ({unit})")
         ts_list._cols = cols  # type: ignore[attr-defined]
 
-    ts_entity_cb.bind("<<ComboboxSelected>>", refresh_ts_columns)
     refresh_ts_columns()
 
     smooth_frame = ttk.Frame(tab_ts)
@@ -885,7 +879,6 @@ def show_overview_window(bundle: ExperimentBundle, overview: Dict[str, Any]) -> 
             messagebox.showerror("No time axis", "This dataset has no valid timestamp_utc column.")
             return
 
-        ent = ts_entity.get()
         cols: List[str] = getattr(ts_list, "_cols", [])  # type: ignore[attr-defined]
         sel = list(ts_list.curselection())
         if not sel:
@@ -893,11 +886,7 @@ def show_overview_window(bundle: ExperimentBundle, overview: Dict[str, Any]) -> 
             return
         chosen_cols = [cols[i] for i in sel]
 
-        for c in chosen_cols:
-            meta = _get_col_meta(c, cfg_meta)
-            if meta["entity"] != ent:
-                messagebox.showerror("Entity mismatch", f"Column '{c}' is '{meta['entity']}', but you selected '{ent}'.")
-                return
+        # No entity dropdown any more; selected columns can be from any entity.
 
         ts_ax.clear()
         sample_period_s = _estimate_sample_period_s(df)
@@ -934,10 +923,26 @@ def show_overview_window(bundle: ExperimentBundle, overview: Dict[str, Any]) -> 
             messagebox.showerror("Invalid EMA alpha", "Alpha must be a number in (0, 1].")
             return
 
-        for c in chosen_cols:
-            meta = _get_col_meta(c, cfg_meta)
-            y = _clean_numeric_for_plot(df[c])
+        # Support plotting multiple chosen columns on separate y-axes when
+        # their inferred `entity`/unit differs. The first entity uses the
+        # primary axis; the second creates a twinx() and the third an
+        # additional twinx whose spine is offset outward. We support up to
+        # three y-axes here; additional entities will reuse the last axis.
+        import matplotlib.cm as mpcm
 
+        entity_axes: Dict[str, Any] = {}
+        axes_list = [ts_ax]
+        entity_order: List[str] = []
+        handles = []
+
+        cmap = mpcm.get_cmap("tab10")
+
+        for idx, c in enumerate(chosen_cols):
+            meta = _get_col_meta(c, cfg_meta)
+            ent_col = meta.get("entity", "Other")
+
+            # Prepare Y data
+            y = _clean_numeric_for_plot(df[c])
             if ts_ma_on.get():
                 y = _apply_moving_average(y, win_s, sample_period_s)
             if ts_ema_on.get():
@@ -947,12 +952,81 @@ def show_overview_window(bundle: ExperimentBundle, overview: Dict[str, Any]) -> 
                     messagebox.showerror("Invalid EMA alpha", str(e))
                     return
 
-            ts_ax.plot(x, y, label=meta["label"])
+            # Choose or create axis for this entity
+            if ent_col in entity_axes:
+                ax = entity_axes[ent_col]
+            else:
+                # Create new axis if needed
+                if len(axes_list) == 1:
+                    ax = axes_list[0]
+                elif len(axes_list) == 2:
+                    ax = axes_list[1]
+                else:
+                    ax = axes_list[-1]
 
+                # If this is a new entity distinct from the first seen,
+                # create a twin axis (up to two additional axes).
+                if ent_col not in entity_axes and ent_col not in entity_order:
+                    if len(entity_order) == 0:
+                        # first entity -> primary axis (already ts_ax)
+                        ax = ts_ax
+                    elif len(entity_order) == 1:
+                        # second distinct entity -> create twinx
+                        ax = ts_ax.twinx()
+                        axes_list.append(ax)
+                    else:
+                        # third (or more) distinct entity -> create another twinx and offset spine
+                        ax = ts_ax.twinx()
+                        axes_list.append(ax)
+                        try:
+                            ax.spines["right"].set_position(("outward", 60 * (len(axes_list) - 2)))
+                        except Exception:
+                            pass
+
+                entity_axes[ent_col] = ax
+                entity_order.append(ent_col)
+
+            # Determine color for this line (use a cycle based on column index)
+            color = cmap(idx % 10)
+
+            # Plot on the chosen axis
+            ln, = entity_axes[ent_col].plot(x, y, label=meta["label"], color=color)
+            handles.append(ln)
+
+            # Fill uncertainty on the same axis if requested
             if ts_unc_on.get():
                 sigma = _assumed_uncertainty(meta["unit"], meta["entity"])
                 if sigma > 0:
-                    ts_ax.fill_between(x, y - sigma, y + sigma, alpha=0.15)
+                    entity_axes[ent_col].fill_between(x, y - sigma, y + sigma, alpha=0.15, color=color)
+
+        # Adjust axis labels/colors for each distinct entity axis
+        for i, ent in enumerate(entity_order):
+            ax = entity_axes.get(ent)
+            if ax is None:
+                continue
+            # Choose a reasonable label from the first column of this entity
+            cols_for_ent = [c for c in chosen_cols if _get_col_meta(c, cfg_meta).get("entity") == ent]
+            label_unit = _get_col_meta(cols_for_ent[0], cfg_meta).get("unit", "") if cols_for_ent else ""
+            ax.set_ylabel(f"{ent} [{label_unit}]" if label_unit else ent)
+            # color the axis spine and tick labels to the first plotted line color
+            try:
+                line_color = handles[[_get_col_meta(c, cfg_meta).get("entity") for c in chosen_cols].index(ent)].get_color()
+                for tl in ax.get_yticklabels():
+                    tl.set_color(line_color)
+                ax.yaxis.label.set_color(line_color)
+                # color appropriate spine (left for primary axis, right for twins)
+                try:
+                    spine_name = "left" if ax is ts_ax else "right"
+                    ax.spines[spine_name].set_edgecolor(line_color)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+        # Make room on the right if we have extra axes
+        if len(axes_list) > 1:
+            # expand right margin to accommodate extra y-axes
+            ts_fig.subplots_adjust(right=max(0.85, 0.9 - 0.02 * (len(axes_list) - 2)))
 
         if not ts_x_auto.get():
             try:
@@ -982,11 +1056,21 @@ def show_overview_window(bundle: ExperimentBundle, overview: Dict[str, Any]) -> 
                 messagebox.showerror("Invalid Y limits", f"Y limits must be numbers.\n\n{e}")
                 return
 
-        unit = _get_col_meta(chosen_cols[0], cfg_meta)["unit"] if chosen_cols else ""
         ts_ax.set_xlabel(x_label)
-        ts_ax.set_ylabel(f"{ent} [{unit}]" if unit else ent)
+        # If we plotted only a single entity, label the primary axis here;
+        # otherwise labels were set per-axis above.
+        try:
+            if len(entity_order) <= 1 and chosen_cols:
+                unit = _get_col_meta(chosen_cols[0], cfg_meta)["unit"] if chosen_cols else ""
+                ts_ax.set_ylabel(f"{ent} [{unit}]" if unit else ent)
+        except Exception:
+            pass
 
-        title = ts_title.get().strip() or f"{ent} vs time"
+        # If user didn't provide a title, infer from first selected column's entity
+        first_entity = None
+        if chosen_cols:
+            first_entity = _get_col_meta(chosen_cols[0], cfg_meta).get("entity", None)
+        title = ts_title.get().strip() or (f"{first_entity} vs time" if first_entity else "Timeseries")
         ts_ax.set_title(title)
 
         try:
@@ -996,12 +1080,42 @@ def show_overview_window(bundle: ExperimentBundle, overview: Dict[str, Any]) -> 
             _draw_events_on_axis(ts_ax, x_mode=x_mode, xlim=None)
 
         ts_ax.grid(True)
-        ts_ax.legend(loc="best")
+        try:
+            # Use collected handles across axes so legend shows all lines
+            if handles:
+                ts_ax.legend(handles=handles, loc="best")
+            else:
+                ts_ax.legend(loc="best")
+        except Exception:
+            try:
+                ts_ax.legend(loc="best")
+            except Exception:
+                pass
         if x_mode == "Amsterdam time":
             ts_fig.autofmt_xdate()
         ts_canvas.draw()
 
+    def ts_reset():
+        """Clear the timeseries figure and re-create the primary axis."""
+        nonlocal ts_ax, ts_fig
+        try:
+            ts_fig.clf()
+        except Exception:
+            # fallback: remove all axes
+            for a in list(ts_fig.axes):
+                try:
+                    ts_fig.delaxes(a)
+                except Exception:
+                    pass
+
+        ts_ax = ts_fig.add_subplot(111)
+        ts_ax.set_title("")
+        ts_ax.set_xlabel("")
+        ts_ax.set_ylabel("")
+        ts_canvas.draw()
+
     ttk.Button(title_frame, text="Plot timeseries", command=ts_plot).pack(side="left")
+    ttk.Button(title_frame, text="Reset timeseries", command=ts_reset).pack(side="left", padx=(6, 0))
 
     # =========================
     # Scatterplot tab (X vs Y)
