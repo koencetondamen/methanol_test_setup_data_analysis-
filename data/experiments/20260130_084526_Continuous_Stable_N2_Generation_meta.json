@@ -1,0 +1,6 @@
+{
+  "name": "Continuous Stable N2 Generation",
+  "operator": "Bennie, Koen & Jeroen",
+  "notes": "Purpose: Continuous Nitrogen Generation\n\nDescription:\n1. Gain insight into system behaviour under stable circumstances\n2. Verify purity of the N2 that is being generated\n\nSensor Configuration:\nSD8500 - Downstream Compressor\nSD6500-1 - Downstream Dryer\nSD6500-2 - Downstream N2 Membrane\n\nSenzTX - Downstream N2 Membrane\n\nMichell DP - Downstream Dryer\nBanner 1 - Upstream Dryer\nBanner 2 - Upstream N2 Membrane\n\nPT100_1 - Ambient Temperature Measurement Insulated Area\nPT100_2 - Inline Temperature Measurement Aftercooler\nPT100_3 - Ambient Temperature Measurement Uninsulated Area\nPT100-4 - Ambient Temperature Measurement Outside",
+  "start_time_ams": "20260130_084526"
+}

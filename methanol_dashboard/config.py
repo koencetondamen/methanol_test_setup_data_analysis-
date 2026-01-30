@@ -5,7 +5,7 @@ from pathlib import Path
 # --------------------------
 
 # Set this to True while the IO-Link master is not connected.
-USE_SIMULATION = True
+USE_SIMULATION = False
 
 # IP address of the IO-Link master (AL1322)
 IOT_HOST = "192.168.1.250"  # change when needed
@@ -14,14 +14,14 @@ IOT_HOST = "192.168.1.250"  # change when needed
 # Adjust these to match your final wiring once the hardware is connected.
 
 PORT_SD8500             = 1              # Testo SD8500
-PORT_SD6500_1           = 2              # Testo SD6500 #1
+PORT_SD6500_1           = 2             # Testo SD6500 #1
 PORT_SD6500_2           = 3           # Testo SD6500 #2
-PORT_SENXTX_ANALOG      = 4           # SenxTx via analogue IO-Link (DP2200 or similar)
+PORT_SENXTX_ANALOG      = 7          # SenxTx via analogue IO-Link (DP2200 or similar)
 PORT_MICHELL_ANALOG     = 5              # Dewpoint Michell via analogue IO-Link
 PORT_BANNER_DEWPOINT_1  = 6           # Dewpoint Banner #1 via Modbus–IO–Link converter
-PORT_BANNER_DEWPOINT_2  = 7           # Dewpoint Banner #2 via Modbus–IO–Link converter
-PORT_BANNER_DEWPOINT_3  = 8           # Dewpoint Banner #3 via Modbus–IO–Link converter
-PORT_PT100_MODULE       = None              # 4-channel PT100 IO-Link module (AL2284)
+PORT_BANNER_DEWPOINT_2  = 4          # Dewpoint Banner #2 via Modbus–IO–Link converter
+PORT_BANNER_DEWPOINT_3  = None          # Dewpoint Banner #3 via Modbus–IO–Link converter
+PORT_PT100_MODULE       = 8              # 4-channel PT100 IO-Link module (AL2284)
 
 # --------------------------
 # Acquisition parameters

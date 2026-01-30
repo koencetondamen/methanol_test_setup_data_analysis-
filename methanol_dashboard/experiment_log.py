@@ -77,8 +77,8 @@ class ExperimentLogger:
 
             self._recent_events.clear()
             self.active = True
-            print(f"[ExperimentLogger] Started experiment: {self._csv_path.name}")
-            print(f"[ExperimentLogger] Events file: {self._events_path.name}")
+            # print(f"[ExperimentLogger] Started experiment: {self._csv_path.name}")
+            # print(f"[ExperimentLogger] Events file: {self._events_path.name}")
 
     def _make_event_row(self, action: str) -> Dict[str, Any]:
         now_ams = datetime.now(AMS_TZ).isoformat(timespec="seconds")
@@ -147,4 +147,4 @@ class ExperimentLogger:
             self._events_writer = None
 
             self.active = False
-            print("[ExperimentLogger] Stopped experiment")
+            # print("[ExperimentLogger] Stopped experiment")

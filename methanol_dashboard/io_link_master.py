@@ -291,10 +291,10 @@ class IoLinkMaster:
         temperature_c = temp_raw / 20.0
         dewpoint_c = dew_raw / 100.0
 
-        print("PDin tail words:", [f"0x{w:04X}" for w in (dew_u16, temp_u16, hum_u16, status_u16)])
-        print("humidity:", humidity_rh)
-        print("temperature:", temperature_c)
-        print("dewpoint:", dewpoint_c)
+        # print("PDin tail words:", [f"0x{w:04X}" for w in (dew_u16, temp_u16, hum_u16, status_u16)])
+        # print("humidity:", humidity_rh)
+        # print("temperature:", temperature_c)
+        # print("dewpoint:", dewpoint_c)
 
         return {
             f"{prefix}_Humidity": float(humidity_rh),
@@ -386,11 +386,12 @@ class IoLinkMaster:
         if sd8500_port is not None:
             try:
                 hx = self.get_pdin_hex(sd8500_port, timeout=timeout)
-                print("SD8500 value:", hx)
+                # print("SD8500 value:", hx)
                 if hx:
                     row.update(self.decode_sd8500_pdin(hx))
             except Exception as exc:
-                print(f"[IoLinkMaster] SD8500 error: {exc}")
+                # print(f"[IoLinkMaster] SD8500 error: {exc}")
+                pass
 
         # SD6500 #1 ---------------------------------------------
         if sd6500_1_port is not None:
@@ -399,7 +400,8 @@ class IoLinkMaster:
                 if hx:
                     row.update(self.decode_sd6500_pdin(hx, prefix="sd6500_1"))
             except Exception as exc:
-                print(f"[IoLinkMaster] SD6500 #1 error: {exc}")
+                # print(f"[IoLinkMaster] SD6500 #1 error: {exc}")
+                pass
 
         # SD6500 #2 ---------------------------------------------
         if sd6500_2_port is not None:
@@ -408,28 +410,31 @@ class IoLinkMaster:
                 if hx:
                     row.update(self.decode_sd6500_pdin(hx, prefix="sd6500_2"))
             except Exception as exc:
-                print(f"[IoLinkMaster] SD6500 #2 error: {exc}")
+                # print(f"[IoLinkMaster] SD6500 #2 error: {exc}")
+                pass
 
         # SenxTx analogue ---------------------------------------
         if senxtx_port is not None:
 
             try:
                 hx = self.get_pdin_hex(senxtx_port, timeout=timeout)
-                print("hx:",hx)
+                # print("hx:",hx)
                 if hx:
                     row.update(self.decode_senxtx_oxygen(hx))
             except Exception as exc:
-                print(f"[IoLinkMaster] SenxTx error: {exc}")
+                # print(f"[IoLinkMaster] SenxTx error: {exc}")
+                pass
 
         # Dewpoint Michell analogue -----------------------------
         if michell_port is not None:
             try:
                 hx = self.get_pdin_hex(michell_port, timeout=timeout)
-                print("hx michell dewpoint", hx)
+                # print("hx michell dewpoint", hx)
                 if hx:
                     row.update(self.decode_michell_dewpoint(hx))
             except Exception as exc:
-                print(f"[IoLinkMaster] Michell dewpoint error: {exc}")
+                # print(f"[IoLinkMaster] Michell dewpoint error: {exc}")
+                pass
 
         # Dewpoint Banner #1 ------------------------------------
         if banner_dp1_port is not None:
@@ -438,7 +443,8 @@ class IoLinkMaster:
                 if hx:
                     row.update(self.decode_banner_dewpoint_pdin(hx, prefix="dewpoint_banner_1"))
             except Exception as exc:
-                print(f"[IoLinkMaster] Banner dewpoint #1 error: {exc}")
+                # print(f"[IoLinkMaster] Banner dewpoint #1 error: {exc}")
+                pass
 
         # Dewpoint Banner #2 ------------------------------------
         if banner_dp2_port is not None:
@@ -447,7 +453,8 @@ class IoLinkMaster:
                 if hx:
                     row.update(self.decode_banner_dewpoint_pdin(hx, prefix="dewpoint_banner_2"))
             except Exception as exc:
-                print(f"[IoLinkMaster] Banner dewpoint #2 error: {exc}")
+                # print(f"[IoLinkMaster] Banner dewpoint #2 error: {exc}")
+                pass
 
         # Dewpoint Banner #3 ------------------------------------
         if banner_dp3_port is not None:
@@ -456,17 +463,19 @@ class IoLinkMaster:
                 if hx:
                     row.update(self.decode_banner_dewpoint_pdin(hx, prefix="dewpoint_banner_3"))
             except Exception as exc:
-                print(f"[IoLinkMaster] Banner dewpoint #3 error: {exc}")
+                # print(f"[IoLinkMaster] Banner dewpoint #3 error: {exc}")
+                pass
 
         # PT100 module (AL2284) --------------------------------
         if pt100_module_port is not None:
             try:
                 hx = self.get_pdin_hex(pt100_module_port, timeout=timeout)
-                print("pt100:", hx)
+                # print("pt100:", hx)
                 if hx:
                     row.update(self.decode_al2284_pdin(hx))
             except Exception as exc:
-                print(f"[IoLinkMaster] PT100 module error: {exc}")
+                # print(f"[IoLinkMaster] PT100 module error: {exc}")
+                pass
 
-        print("row:", row)
+        # print("row:", row)
         return row

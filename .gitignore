@@ -5,3 +5,7 @@ data/experiments/*
 !data/experiments/20251229_125614_experiment_jeroen.csv
 !data/experiments/20251229_125614_experiment_jeroen_meta.json
 !data/experiments/20251229_125614_experiment_jeroen_events.csv
+
+!data/experiments/20260130_084526_Continuous_Stable_N2_Generation_events.csv 
+!data/experiments/20260130_084526_Continuous_Stable_N2_Generation_meta.json 
+!data/experiments/20260130_084526_Continuous_Stable_N2_Generation.csv
